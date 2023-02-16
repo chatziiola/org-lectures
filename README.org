@@ -26,7 +26,15 @@ extensive documentation by the end of the week.
   )
 #+end_src
 
+* Quick Description:
+This package allows the user to:
+1. Easily organize and manage their lecture notes through an interactive prompt.
+2. Easily navigate between lectures of the same course and their respective directories
+3. 
 
+* Tips
+Check out the ~cdlatex~ package, especially if you are in a field with plenty of mathematics. 
+It allows for the smooth integration of latex inside of org mode.
 
 * TODOs:
 - [ ] Maybe implement classes. This is an obvious example of a program that
