@@ -1,0 +1,37 @@
+#+TITLE: Org-lectures
+
+#+begin_comment
+Simplifying and automating the mundane task of creating, organizing, and finding
+your static notes so that you can focus on their actual content. It does not
+*alter* the way you would otherwise interact with your org files, like other
+widely used packages.
+#+end_comment
+
+
+So in general 
+
+* Customization options
+
+* Key bindings: ~<leader> l~                                         :inactive:
+#+begin_src elisp
+
+(lc/leader-keys
+  "ll" '(org-lectures-find-course		:which-keys "lecture")
+  "lF" '(org-lectures-dired-course-folder	:which-keys "Open course's folder")
+  "ld" '(org-lectures-new-draft-article		:which-keys "New Draft Article")
+  "la" '(org-static-blog-create-new-post	:which-keys "New Article")
+  "lp" '(org-lectures-publish-lecture		:which-keys "Publish lecture")
+  )
+
+#+end_src
+
+
+* TODOs:
+- [ ] Maybe implement classes. This is an obvious example of a program that
+  could be improved with OOP.
+  - https://www.gnu.org/software/emacs/manual/html_node/eieio/Building-Classes.html
+- [ ] See ~org-lectures-find-course~ for improvement (quicker course creation)
+- [ ] See maybe that you publish the /strange/ keyword library as well, because I
+  do not like using it like that in various places
+- [ ] See maybe that you publish the /strange/ keyword library as well, because
+  I do not like using it like that in various places
