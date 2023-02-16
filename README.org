@@ -8,22 +8,24 @@ widely used packages.
 #+end_comment
 
 
-So in general 
+I'm keeping this sort because I do not feel like elaborating right now. I'll add
+extensive documentation by the end of the week.
 
-* Customization options
-
-* Key bindings: ~<leader> l~                                         :inactive:
 #+begin_src elisp
-
-(lc/leader-keys
-  "ll" '(org-lectures-find-course		:which-keys "lecture")
-  "lF" '(org-lectures-dired-course-folder	:which-keys "Open course's folder")
-  "ld" '(org-lectures-new-draft-article		:which-keys "New Draft Article")
-  "la" '(org-static-blog-create-new-post	:which-keys "New Article")
-  "lp" '(org-lectures-publish-lecture		:which-keys "Publish lecture")
+(use-package org-lectures
+  :straight
+  (:host github :repo "chatziiola/org-lectures")
+  :config
+  (setq org-lectures-dir (expand-file-name "/your/path"))
+  (setq org-lectures-static-course-files-dir  "/your/path")
+  (setq org-lectures-roam-id-integration  t)
+  :general
+  (lc/leader-keys
+    "ll" '(org-lectures-find-course		:which-keys "lecture")
+    "lF" '(org-lectures-dired-course-folder	:which-keys "Open course's folder"))
   )
-
 #+end_src
+
 
 
 * TODOs:

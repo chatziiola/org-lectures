@@ -32,19 +32,6 @@
 
 ;;; Commentary:
 
-;; This small package is to help you keep a clean and organized directory
-;; structure, easily find your notes and bootstrap the note-creation process.
-
-;; To achieve this functionality, the package utilizes two basic /rules/:
-;;;1. A file-naming standard: notes_(category_)title.org
-;;;; You, obviously, can tailor that to your needs, but I haven't had, so far a
-;;;; single reason to do so. Its structure allows for note files to be grouped
-;;;; up together when navigating the notes-directory manually.
-;;;2. A file-properties standard: #+<PROPERTY>: <VALUE>
-;;;; This can also be modified, even though it is tricky and (as a tip), should
-;;;; be done gradually and not at once. Just because a feature exists it does
-;;;; not mean that it should be used
-
 ;; For a deep dive into the ideology of the package, look up the README.org file
 ;; that you should have received along with it.
 
@@ -52,8 +39,7 @@
 
 (require 'org)
 
-(defvar org-lectures-dir
-  (expand-file-name "/Users/maclampis/Github/milectures")
+(defvar org-lectures-dir (expand-file-name "~/org/lectures")
  "Lecture and course files directory.
 
 All courses and their respective lecture files are stored in
@@ -79,7 +65,7 @@ To be updated at the beginning of each semester by the user. This
 option is not necessary but helps in the /automatic/ gathering of
 data around courses.")
 
-(defvar org-lectures-static-course-files-dir  "/Users/maclampis/gessner/leonardo/"
+(defvar org-lectures-static-course-files-dir  org-lectures-dir
   "The path to extra course-related subfolders.
 
 This option defaults to `org-lectures-dir'. Thus,
@@ -93,7 +79,9 @@ choice.")
 
 If this is true, then upon file creation a unique ID will be
 generated, so that course files can be linked and use from within
-org-roam.")
+org-roam.
+
+FIXME. This option is not currently implemented.")
 
 (defun org-lectures-sluggify (inputString)
   "Given a string return it's /sluggified/ version.
