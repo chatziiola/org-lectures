@@ -344,6 +344,7 @@ instead of creating any new files. If, however the filel dows not
 exist, and the length of the short title is less than 4 letters a
 new org file is created, in `org-lectures-dir', and with
 the course's default properties all set up."
+        (interactive)
         (let* ((course (downcase (completing-read "Insert short course title:" ())))
                 (course-org-file (expand-file-name (concat "course_" course ".org") org-lectures-dir)))
           (cond
