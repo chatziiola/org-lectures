@@ -333,7 +333,7 @@ If the subdirectory does not exist, it creates it."
     (directory-files
      course-dir					;inside the course directory
      'full					; recursive
-     (concat "lec_" (upcase course) "_"))))	;lecture filenames template
+     (concat "lec_" (upcase course) "_.*\.org"))))	;lecture filenames template
 
 (defun org-lectures-create-new-lecture (&optional COURSE INSTITUTION)
   "Create a new file for COURSE of INSTITUTION.

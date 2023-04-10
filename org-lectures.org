@@ -92,7 +92,6 @@ irritated. Hopefully the first.
        Otherwise a new lecture may be created ( the user must select "New
        Lecture" for that ~org-lectures-create-new-lecture~)
 
-
 * Available variables
 Lectures are to be stored within my org-roam ~uni~ directory
 
@@ -476,7 +475,7 @@ If the subdirectory does not exist, it creates it."
     (directory-files
      course-dir					;inside the course directory
      'full					; recursive
-     (concat "lec_" (upcase course) "_"))))	;lecture filenames template
+     (concat "lec_" (upcase course) "_.*\.org"))))	;lecture filenames template
 
 #+end_src
 
