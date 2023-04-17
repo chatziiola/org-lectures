@@ -83,6 +83,30 @@ org-roam.
 
 FIXME. This option is not currently implemented.")
 
+(defvar org-lectures-note-type-alist '(("lecture" . "lec"))
+  "Contains the note type. Every pair here will be checked.
+
+The format is '(key . regex).
+
+TODO: Implement it in note creation.
+"
+  )
+
+(defvar org-lectures-lecture-data-alist '("TITLE" "PROFESSOR" "DATE")
+  "WARNING: These get added in reverse in the final prompt.
+
+The variable is heavily /under/-tested, so if you decide to use
+it be prepared to encounter strange behaviour. It is intended to
+be linked to `org-lectures-note-type-alist' in the future, so
+that there is no need to differentiate between course note files
+in an unnefficient manner.
+
+At the moment due to spaghetti (at times) coding, only three
+arguments will get shown. I'm thinking of restructuring this so
+that it (maybe) utilizes consult, or simply refactoring so that
+it is not so hastily written. In any case, FIXME.
+")
+
 (defun org-lectures-sluggify (inputString)
   "Given a string return it's /sluggified/ version.
 It has only one argument, INPUTSTRING, which is self-described"
@@ -303,8 +327,9 @@ unecessary options for when called by
 `org-lectures-publish-lecture'."
   (let* ((course-lectures '()))
     (cl-loop for file in (org-lectures-get-lecture-file-list course) do
+	     ;; These get added in reverse in the final prompt
 	     (push (append
-		    (org-lectures-get-keyword-value '( "TITLE"  "PROFESSOR" "DATE") file)
+		    (org-lectures-get-keyword-value org-lectures-lecture-data-alist file)
 		    (list file))
 		   course-lectures
 		   ))
@@ -333,7 +358,7 @@ If the subdirectory does not exist, it creates it."
     (directory-files
      course-dir					;inside the course directory
      'full					; recursive
-     (concat "lec_" (upcase course) "_.*\.org"))))	;lecture filenames template
+     (concat (regexp-opt (mapcar #'cdr org-lectures-note-type-alist)) "_" (upcase course) "_.*\.org"))))	;lecture filenames template
 
 (defun org-lectures-create-new-lecture (&optional COURSE INSTITUTION)
   "Create a new file for COURSE of INSTITUTION.
@@ -383,11 +408,15 @@ have this property properly filled."
     ))
 
 (defun org-lectures-set-lectures-filename(course)
-  "Return the lecture's title in a format: `lec_COURSE_DATE.org'."
-					; This function was modified on <2023-01-10 Tue>, to fix a bug: I could not
-					; start a second lecture for the same course on the same day without
-					; overwriting the initial lecture
-  (let* ((def-filename (concat "lec_" course  "_" (format-time-string "%Y%m%d"(current-time)) ".org"))
+  "Return the lecture's title in a format: `notetype_COURSE_DATE.org'.
+"
+  (let* ((note-datatype
+	  (if (= (length org-lectures-note-type-alist) 1)
+	      (cdr (car org-lectures-note-type-alist))
+	    (cdr (assoc
+		  (completing-read "Select a title: " (mapcar #'car org-lectures-note-type-alist))
+		  org-lectures-note-type-alist))))
+	 (def-filename (concat note-datatype "_" course  "_" (format-time-string "%Y%m%d"(current-time)) ".org"))
 	 (lecpath (expand-file-name def-filename
 				    (expand-file-name (concat "course_" course) org-lectures-dir)))
 	 ;; If the file already exists
@@ -403,7 +432,7 @@ have this property properly filled."
 		      "")))
     (if (string-blank-p extrainfo)
 	def-filename
-      (concat "lec_" course  "_" (format-time-string "%Y%m%d"(current-time)) "_" extrainfo ".org"))))
+      (concat note-datatype "_" course  "_" (format-time-string "%Y%m%d"(current-time)) "_" extrainfo ".org"))))
 
 (provide 'org-lectures)
 ;;; org-lectures.el ends here

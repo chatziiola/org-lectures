@@ -59,7 +59,7 @@ Let's dive into the code
 
 #+end_src
 
-* Introduction
+* Introduction                                                     :INACTIVE:
 I always liked Gilles' https://castel.dev note taking set up, even though I
 could not get it working the way I would like it to be - it is impressive, it
 just is not for me. After all, I am not using vim anymore (even though I
@@ -73,7 +73,7 @@ If Jethro ever reads my configuration files he will either feel proud or
 irritated. Hopefully the first.
 #+end_comment
 
-* The *algorithm*:
+* The *algorithm*:                                                   :INACTIVE:
   1. User calls ~find-course~:
      - A minibuffer appears in which the user can filter courses through:
        - Short-Title
@@ -142,6 +142,41 @@ org-roam.
 FIXME. This option is not currently implemented.")
 
 #+end_src
+
+
+<2023-04-17 Mon>: New parameter: Note type:
+#+begin_src elisp
+(defvar org-lectures-note-type-alist '(("lecture" . "lec"))
+  "Contains the note type. Every pair here will be checked.
+
+The format is '(key . regex).
+
+TODO: Implement it in note creation.
+"
+  )
+#+end_src
+
+
+<2023-04-17 Mon>: New parameter: Lecture data alist:
+#+begin_src elisp
+(defvar org-lectures-lecture-data-alist '("TITLE" "PROFESSOR" "DATE")
+  "WARNING: These get added in reverse in the final prompt.
+
+The variable is heavily /under/-tested, so if you decide to use
+it be prepared to encounter strange behaviour. It is intended to
+be linked to `org-lectures-note-type-alist' in the future, so
+that there is no need to differentiate between course note files
+in an unnefficient manner.
+
+At the moment due to spaghetti (at times) coding, only three
+arguments will get shown. I'm thinking of restructuring this so
+that it (maybe) utilizes consult, or simply refactoring so that
+it is not so hastily written. In any case, FIXME.
+")
+#+end_src
+
+#+RESULTS:
+: org-lectures-lecture-data-alist
 
 * Sluggify
 I wanted to be able to use a /slug/ function just like the one used in org-roam
@@ -439,8 +474,9 @@ unecessary options for when called by
 `org-lectures-publish-lecture'."
   (let* ((course-lectures '()))
     (cl-loop for file in (org-lectures-get-lecture-file-list course) do
+	     ;; These get added in reverse in the final prompt
 	     (push (append
-		    (org-lectures-get-keyword-value '( "TITLE"  "PROFESSOR" "DATE") file)
+		    (org-lectures-get-keyword-value org-lectures-lecture-data-alist file)
 		    (list file))
 		   course-lectures
 		   ))
@@ -475,11 +511,31 @@ If the subdirectory does not exist, it creates it."
     (directory-files
      course-dir					;inside the course directory
      'full					; recursive
-     (concat "lec_" (upcase course) "_.*\.org"))))	;lecture filenames template
+     (concat (regexp-opt (mapcar #'cdr org-lectures-note-type-alist)) "_" (upcase course) "_.*\.org"))))	;lecture filenames template
 
 #+end_src
 
+#+RESULTS:
+: org-lectures-get-lecture-file-list
+
+**** Notes on the ~org-lectures-note-type-alist~ snippet:
+(mapcar #'cdr my-alist) is calling the mapcar function with two arguments: the cdr function and my-alist.
+
+my-alist is the alist that you defined earlier, which is a list of key-value pairs where each key is a string (e.g., "title1", "title2") and each value is a string (e.g., "key1", "key2").
+
+cdr is a built-in Emacs Lisp function that returns the "cdr" (i.e., the second element) of a cons cell. In this case, cdr is being used to extract the values (i.e., the keys) from my-alist.
+
+So, (mapcar #'cdr my-alist) applies cdr to each key-value pair in my-alist, returning a list of just the values (i.e., the keys).
+
+(regexp-opt ...) is calling the regexp-opt function with the list of keys returned by (mapcar #'cdr my-alist) as its argument.
+
+regexp-opt is a built-in Emacs Lisp function that takes a list of strings and returns a regular expression that matches any of the strings. It constructs a regular expression by concatenating the strings and using special characters to indicate alternatives and character sets. The result is a regular expression that can be used to match any of the original strings.
+
+So, (regexp-opt (mapcar #'cdr my-alist)) constructs a regular expression that matches any of the keys in my-alist. This regular expression is used to match the file names in the directory-files call, allowing you to search for files that match any of the keys in your alist.
+
 ** Create new lecture:
+
+
 #+begin_src elisp
 
 (defun org-lectures-create-new-lecture (&optional COURSE INSTITUTION)
@@ -538,11 +594,15 @@ have this property properly filled."
 ** Set lecture's filename
 #+begin_src elisp
 (defun org-lectures-set-lectures-filename(course)
-  "Return the lecture's title in a format: `lec_COURSE_DATE.org'."
-					; This function was modified on <2023-01-10 Tue>, to fix a bug: I could not
-					; start a second lecture for the same course on the same day without
-					; overwriting the initial lecture
-  (let* ((def-filename (concat "lec_" course  "_" (format-time-string "%Y%m%d"(current-time)) ".org"))
+  "Return the lecture's title in a format: `notetype_COURSE_DATE.org'.
+"
+  (let* ((note-datatype
+	  (if (= (length org-lectures-note-type-alist) 1)
+	      (cdr (car org-lectures-note-type-alist))
+	    (cdr (assoc
+		  (completing-read "Select a title: " (mapcar #'car org-lectures-note-type-alist))
+		  org-lectures-note-type-alist))))
+	 (def-filename (concat note-datatype "_" course  "_" (format-time-string "%Y%m%d"(current-time)) ".org"))
 	 (lecpath (expand-file-name def-filename
 				    (expand-file-name (concat "course_" course) org-lectures-dir)))
 	 ;; If the file already exists
@@ -558,9 +618,12 @@ have this property properly filled."
 		      "")))
     (if (string-blank-p extrainfo)
 	def-filename
-      (concat "lec_" course  "_" (format-time-string "%Y%m%d"(current-time)) "_" extrainfo ".org"))))
+      (concat note-datatype "_" course  "_" (format-time-string "%Y%m%d"(current-time)) "_" extrainfo ".org"))))
 
 #+end_src
+
+#+RESULTS:
+: org-lectures-set-lectures-filename
 
 * Footer
 #+begin_src elisp
@@ -568,4 +631,4 @@ have this property properly filled."
 ;;; org-lectures.el ends here
 #+end_src
 
-* Sample Installation                                              :inactive:
+* Sample Installation                                              :INACTIVE:
