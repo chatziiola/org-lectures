@@ -625,6 +625,27 @@ have this property properly filled."
 #+RESULTS:
 : org-lectures-set-lectures-filename
 
+** Publish course
+An interesting addition here, could be helpful.
+
+TODO Add options:
+1. to automatically get rid of the tex files
+2. to automatically create a pdf folder
+3. to zip the created pdf folder for easy sharing
+   
+#+begin_src elisp
+(defun org-lectures-publish-course-to-pdf (course)
+  "Export a list of Org files to LaTeX format, using xelatex as the compiler and including mytex.tex as an extra header.
+
+COURSE: Is the short name for the relative course. "
+  (setq org-latex-compiler "xelatex")
+  ; This does not work. I need to modify my org-lectures capture template to automatically insert it
+;  (setq org-latex-header-extra "\\include{~/Github/org-to-latex-export/sample.tex}")
+  (dolist (file (org-lectures-get-lecture-file-list course))
+    (message (concat "Starting with " file))
+    (with-current-buffer (find-file-noselect file)
+      (org-latex-export-to-pdf))))
+#+end_src
 * Footer
 #+begin_src elisp
 (provide 'org-lectures)
