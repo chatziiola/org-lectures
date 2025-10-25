@@ -15,18 +15,24 @@ irritated. Hopefully the first.
 #+end_comment
 
 * Usage
-#+begin_comment
 Simplifying and automating the mundane task of creating, organizing, and finding
 your static notes so that you can focus on their actual content. It does not
 *alter* the way you would otherwise interact with your org files, like other
 widely used packages.
-#+end_comment
 
+After setting your ~org-lectures-dir~ you can expect it to quickly be populated in
+the following form
+#+begin_quote
+ org-lectures-dir			        # All your courses will be in here
+ ├── course_<COURSE>			        # course - specific folder
+ │   └── <lec_type>_<COURSE>_<DATE>.org	# lecture files
+ └── course_<COURSE>.org			# course description file
+#+end_quote
 
 I'm keeping this sort because I do not feel like elaborating right now. I'll add
 extensive documentation by the end of the week.
 
-#+begin_src elisp
+#+begin_src elisp :tangle no
 (use-package org-lectures
   :straight
   (:host github :repo "chatziiola/org-lectures")
@@ -51,6 +57,25 @@ This package allows the user to:
 Check out the ~cdlatex~ package, especially if you are in a field with plenty of mathematics. 
 It allows for the smooth integration of latex inside of org mode.
 
+** How to use it:
+  1. User calls ~find-course~:
+     - A minibuffer appears in which the user can filter courses through:
+       - Short-Title
+       - Title
+       - Professor
+       - Institution
+     - If the user selects an existent course go to 2. Otherwise a new course
+       will be created ( the user must select "New Course" for that: ~org-lectures-create-new-course~ )
+  2. ~org-lectures-open-course~ is called:
+     - A minibuffer appears in which the user can filter the selected course's
+       lectures through:
+       - Date
+       - Professor name
+       - Lecture Title
+     - If the user selects an existent lecture: it opens in the same window.
+       Otherwise a new lecture may be created ( the user must select "New
+       Lecture" for that ~org-lectures-create-new-lecture~)
+
 ** TODOs:
 - [ ] Maybe implement classes. This is an obvious example of a program that
   could be improved with OOP.
@@ -60,6 +85,7 @@ It allows for the smooth integration of latex inside of org mode.
   do not like using it like that in various places
 - [ ] See maybe that you publish the /strange/ keyword library as well, because
   I do not like using it like that in various places
+
 * Comment Headers
 
 Header
@@ -69,17 +95,20 @@ Header
 ;; This file has been generated from the literate.org file. DO NOT EDIT.
 ;; Sources are available from https://github.com/chatziiola/org-lectures
 
-;; Copyright (C) 2022-2023 Lamprinos Chatziioannou
+;; Copyright (C) 2022-2025 Lamprinos Chatziioannou
 
 ;; Author: Lamprinos Chatziioannou
 ;; Maintainer: Lamprinos Chatziioannou
 ;; URL: https://github.com/chatziiola/org-lectures
 
-;; Special thanks to Jethro Kuan (https://github.com/jethrokuan) for inspiring
-;; me to tailor my set up to my needs, and to David Wilson
-;; (https://github.com/daviwil) and Nicolas P. Rougier
-;; (https://github.com/rougier), for inspiring me to give back to the amazing
-;; Emacs, Org, and FOSS comunities.
+;; Special thanks to:
+;; - Gilles Castel (https://castel.dev)
+;; - Jethro Kuan (https://github.com/jethrokuan)
+;; - David Wilson (https://github.com/daviwil)
+;; - Nicolas P. Rougier (https://github.com/rougier)
+;; They inspired me not only to modify the "vanilla" setup and create scripts
+;; for myself, but also to catch the "bug" of making my setups reproducible and
+;; proper—giving back to the amazing Emacs, Org, and FOSS communities.
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -87,6 +116,7 @@ Header
 
 License
 #+begin_src elisp
+;; LICENSE
 
 ;; This file is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -119,25 +149,6 @@ Let's dive into the code
 (require 'org)
 
 #+end_src
-
-* The *algorithm*:                                                   :INACTIVE:
-  1. User calls ~find-course~:
-     - A minibuffer appears in which the user can filter courses through:
-       - Short-Title
-       - Title
-       - Professor
-       - Institution
-     - If the user selects an existent course go to 2. Otherwise a new course
-       will be created ( the user must select "New Course" for that: ~org-lectures-create-new-course~ )
-  2. ~org-lectures-open-course~ is called:
-     - A minibuffer appears in which the user can filter the selected course's
-       lectures through:
-       - Date
-       - Professor name
-       - Lecture Title
-     - If the user selects an existent lecture: it opens in the same window.
-       Otherwise a new lecture may be created ( the user must select "New
-       Lecture" for that ~org-lectures-create-new-lecture~)
 
 * Available variables
 Lectures are to be stored within my org-roam ~uni~ directory
@@ -188,6 +199,10 @@ org-roam.
 
 FIXME. This option is not currently implemented.")
 
+(defvar org-lectures-append-to-inbox nil
+  "Whether an entry should be added to the users `inbox.org' file, (found in `org-directory')."
+  )
+
 #+end_src
 
 
@@ -225,12 +240,45 @@ it is not so hastily written. In any case, FIXME.
 #+RESULTS:
 : org-lectures-lecture-data-alist
 
-* Sluggify
+<2025-10-25 Sat>: New parameter: Lecture file template
+#+NAME: org-lecture-file-template
+#+begin_src elisp
+(defvar org-lectures-file-template
+  ":PROPERTIES:
+:ID: %i
+:END:
+,#+TITLE: Διάλεξη:
+,#+FILETAGS: %t
+,#+DATE: %d
+,#+COURSE: %c
+,#+INSTITUTION: %n
+"
+  "Template for new lecture files.
+
+Use `format-spec` codes:
+  %i  -> ID (e.g., \"lec-<course>-\")
+  %d  -> date (e.g., \"<2025-10-25>\")
+  %c  -> course
+  %n  -> institution
+  %t  -> filetags")
+#+end_src
+
+<2025-10-25 Sat>: New parameter: Lecture default tags
+#+NAME: org-lectures-default-tag-alist
+#+begin_src elisp
+(defvar org-lectures-default-tag-alist '("lecture" "todo")
+  "This variable is used when setting the FILETAGS parameter in new lecture files")
+#+end_src
+
+* Functions
+** String Normalization
 I wanted to be able to use a /slug/ function just like the one used in org-roam
 and knowing that it existed there I found no reason to lose time on implementing
 a different one.
 - Source:  https://github.com/org-roam/org-roam
-  
+- <2025-10-25 Sat>: I opted for a much simpler version:
+  - Keeps only alphanumeric characters - discards everything else.
+  - Uses '-' for spaces.
 #+begin_src elisp
 (defun org-lectures-sluggify (inputString)
   "Given a string return it's /sluggified/ version.
@@ -241,7 +289,7 @@ It has only one argument, INPUTSTRING, which is self-described"
       (replace-regexp-in-string "^-\\|-$" "" s)))
 #+end_src
 
-* Keyword functions
+** Get-keyword-value
 #+begin_comment
 This may be more than worth to replace with regexp expressions, but it works
 fine, even though the file needs to be launched, wasting some time.
@@ -258,7 +306,6 @@ This function and the next ( even though that one has been slightly modified )
 were found in [[https://stackoverflow.com/questions/66574715/how-to-get-org-mode-file-title-and-other-file-level-properties-from-an-arbitra][StackOverflow]].
 
 #+begin_src elisp
-
 (defun ndk/get-keyword-key-value (kwd)
   "Only to be used by `org-lectures-get-keyword-value'.
 
@@ -317,11 +364,8 @@ Now some notes on the latter function:
   extremely reduced performance. Now, when first running the script on a
   specific category (or in general) it may take some time[fn:1] 
 
-* Functions
-
 ** Find-course
 Find-course: This is the entry point
-FIXME change the name so that it suits better
 #+begin_src elisp
 
 (defun org-lectures-find-course ()
@@ -396,7 +440,7 @@ new org file is created, in `org-lectures-dir', and with
 the course's default properties all set up."
         (interactive)
         (let* ((course (downcase (completing-read "Insert short course title:" ())))
-                (course-org-file (expand-file-name (concat "course_" course ".org") org-lectures-dir)))
+               (course-org-file (org-lectures-get-course-info-file course)))
           (cond
            ((file-exists-p course-org-file)
                 (org-lectures-open-course (upcase course)))
@@ -429,12 +473,16 @@ when called by `org-lectures-open-course'"
 Works only if inside an org file with the 'COURSE' property, or
 when called by `org-lectures-open-course'"
   (interactive)
+  (message "org-lectures-dired-course-folder Function will be deprecated in later version")
   (let* ((course (or course (org-lectures-get-keyword-value "COURSE"))))
     (unless (symbolp course)
       (message (concat "Course " course " folder opened")))
     (dired (concat org-lectures-static-course-files-dir "course_" course))))
 
 #+end_src
+
+- <2025-10-25 Sat> Deprecated message dired-course-folder. No reason to exist,
+  since keybindings for dired do this much more easily.
 
 ** Open course or (equally correctly) get list of lectures
 #+begin_src elisp
@@ -457,7 +505,7 @@ creating a new one. Gives the option to:
 	 ((string-equal lecture-answer "OF")
 	  (org-lectures-dired-course-folder course))
 	 ((string-equal lecture-answer "INFO")
-	  (org-open-file (expand-file-name (concat "course_" course ".org") org-lectures-dir ))))
+	  (org-open-file (org-lectures-get-course-info-file course))))
       (org-open-file (car (last lecture-answer))))))
 
 #+end_src
@@ -550,19 +598,11 @@ regexp-opt is a built-in Emacs Lisp function that takes a list of strings and re
 So, (regexp-opt (mapcar #'cdr my-alist)) constructs a regular expression that matches any of the keys in my-alist. This regular expression is used to match the file names in the directory-files call, allowing you to search for files that match any of the keys in your alist.
 
 ** Create new lecture:
-
-
 #+begin_src elisp
-
 (defun org-lectures-create-new-lecture (&optional COURSE INSTITUTION)
   "Create a new file for COURSE of INSTITUTION.
 
-FIXME: This is the old documentation:
-
-It creates a new buffer in org mode with some simple metadata
-information (specifically selected for lectures: TITLE, DATE,
-INSTITUTION,COURSE). It is designed to be used along with the
-`org-lectures-save-lecture-buffer-to-file' function.
+Populate it according to `org-lectures-file-template'.
 
 Optional arguments exist:
 
@@ -578,13 +618,16 @@ automatically populated by 'A.U.Th' if left empty."
 			   ;; This function also checks whether such a func exists
 			   (org-lectures-set-lectures-filename COURSE)
 			   (expand-file-name (concat "course_" COURSE) org-lectures-dir))))
+    (let* ((id   (concat "lec-" COURSE "-"))
+	   (date (format-time-string "<%Y-%m-%d>"))
+	   ;; Join tags, with a space in-between
+	   (tags (string-join (seq-map (lambda (x) (cond ((stringp x) x) ((consp x) (car x)) (t nil))) org-lectures-default-tag-alist) " ")) 
+	   (spec (format-spec-make ?i id ?d date ?c COURSE ?I INSTITUTION ?t tags))
+	   (payload (format-spec org-lectures-file-template spec t)))
+      (write-region payload nil lecture-filename))
 
-    ;; Populate lecture
-    (write-region
-     (concat ":PROPERTIES:\n:ID: lec-" COURSE "-" "\n:END:\n#+TITLE: Διάλεξη:\n#+FILETAGS: lecture\n#+DATE: " (format-time-string "<%Y-%m-%d>") "\n#+FILETAGS: lecture\n#+COURSE: " COURSE "\n#+INSTITUTION: " INSTITUTION "\n")
-     nil lecture-filename)
-    ;; Add task in inbox
-    (write-region (concat "\n* ACTION \[\[" lecture-filename "\]\]\n") nil (expand-file-name "inbox.org" org-directory) t)
+    (if org-lectures-append-to-inbox
+	(write-region (concat "\n* ACTION \[\[" lecture-filename "\]\]\n") nil (expand-file-name "inbox.org" org-directory) t))
 
     (org-open-file lecture-filename)))
 
@@ -602,9 +645,21 @@ have this property properly filled."
       org-lectures-default-institution
     (org-lectures-get-keyword-value "INSTITUTION"
 				  (expand-file-name (concat "course_" course ".org")
-						    org-lectures-dir))
-    ))
+						    org-lectures-dir))))
 
+#+end_src
+
+** Get course's info file
+#+NAME: course info file
+#+begin_src elisp
+
+(defun org-lectures-get-course-info-file (course)
+  "Return the filename of that course's info file"
+  (let* ((lower-file (expand-file-name (concat "course_" (downcase course) ".org") org-lectures-dir ))
+	 (proper-file (expand-file-name (concat "course_" course ".org") org-lectures-dir )))
+  (if (f-file-p lower-file) ; remnants of a shady past 
+      lower-file
+    proper-file)))
 #+end_src
 
 ** Set lecture's filename
@@ -641,7 +696,7 @@ have this property properly filled."
 #+RESULTS:
 : org-lectures-set-lectures-filename
 
-** Publish course
+** TODO Publish course                                                                 :INACTIVE:
 An interesting addition here, could be helpful.
 
 TODO Add options:
@@ -668,4 +723,3 @@ COURSE: Is the short name for the relative course. "
 ;;; org-lectures.el ends here
 #+end_src
 
-* Sample Installation                                              :INACTIVE:

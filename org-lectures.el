@@ -3,19 +3,24 @@
 ;; This file has been generated from the literate.org file. DO NOT EDIT.
 ;; Sources are available from https://github.com/chatziiola/org-lectures
 
-;; Copyright (C) 2022-2023 Lamprinos Chatziioannou
+;; Copyright (C) 2022-2025 Lamprinos Chatziioannou
 
 ;; Author: Lamprinos Chatziioannou
 ;; Maintainer: Lamprinos Chatziioannou
 ;; URL: https://github.com/chatziiola/org-lectures
 
-;; Special thanks to Jethro Kuan (https://github.com/jethrokuan) for inspiring
-;; me to tailor my set up to my needs, and to David Wilson
-;; (https://github.com/daviwil) and Nicolas P. Rougier
-;; (https://github.com/rougier), for inspiring me to give back to the amazing
-;; Emacs, Org, and FOSS comunities.
+;; Special thanks to:
+;; - Gilles Castel (https://castel.dev)
+;; - Jethro Kuan (https://github.com/jethrokuan)
+;; - David Wilson (https://github.com/daviwil)
+;; - Nicolas P. Rougier (https://github.com/rougier)
+;; They inspired me not only to modify the "vanilla" setup and create scripts
+;; for myself, but also to catch the "bug" of making my setups reproducible and
+;; proper—giving back to the amazing Emacs, Org, and FOSS communities.
 
 ;; This file is NOT part of GNU Emacs.
+
+;; LICENSE
 
 ;; This file is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -83,6 +88,10 @@ org-roam.
 
 FIXME. This option is not currently implemented.")
 
+(defvar org-lectures-append-to-inbox nil
+  "Whether an entry should be added to the users `inbox.org' file, (found in `org-directory')."
+  )
+
 (defvar org-lectures-note-type-alist '(("lecture" . "lec"))
   "Contains the note type. Every pair here will be checked.
 
@@ -107,44 +116,35 @@ that it (maybe) utilizes consult, or simply refactoring so that
 it is not so hastily written. In any case, FIXME.
 ")
 
+(defvar org-lectures-file-template
+  ":PROPERTIES:
+:ID: %i
+:END:
+#+TITLE: Διάλεξη:
+#+FILETAGS: %t
+#+DATE: %d
+#+COURSE: %c
+#+INSTITUTION: %n
+"
+  "Template for new lecture files.
+
+Use `format-spec` codes:
+  %i  -> ID (e.g., \"lec-<course>-\")
+  %d  -> date (e.g., \"<2025-10-25>\")
+  %c  -> course
+  %n  -> institution
+  %t  -> filetags")
+
+(defvar org-lectures-default-tag-alist '("lecture" "todo")
+  "This variable is used when setting the FILETAGS parameter in new lecture files")
+
 (defun org-lectures-sluggify (inputString)
   "Given a string return it's /sluggified/ version.
 It has only one argument, INPUTSTRING, which is self-described"
-  (let ((slug-trim-chars '(
-			   ;; Combining Diacritical Marks https://www.unicode.org/charts/PDF/U0300.pdf
-                           768 ; U+0300 COMBINING GRAVE ACCENT
-                           769 ; U+0301 COMBINING ACUTE ACCENT
-                           770 ; U+0302 COMBINING CIRCUMFLEX ACCENT
-                           771 ; U+0303 COMBINING TILDE
-                           772 ; U+0304 COMBINING MACRON
-                           774 ; U+0306 COMBINING BREVE
-                           775 ; U+0307 COMBINING DOT ABOVE
-                           776 ; U+0308 COMBINING DIAERESIS
-                           777 ; U+0309 COMBINING HOOK ABOVE
-                           778 ; U+030A COMBINING RING ABOVE
-                           779 ; U+030B COMBINING DOUBLE ACUTE ACCENT
-                           780 ; U+030C COMBINING CARON
-                           795 ; U+031B COMBINING HORN
-                           803 ; U+0323 COMBINING DOT BELOW
-                           804 ; U+0324 COMBINING DIAERESIS BELOW
-                           805 ; U+0325 COMBINING RING BELOW
-                           807 ; U+0327 COMBINING CEDILLA
-                           813 ; U+032D COMBINING CIRCUMFLEX ACCENT BELOW
-                           814 ; U+032E COMBINING BREVE BELOW
-                           816 ; U+0330 COMBINING TILDE BELOW
-                           817 ; U+0331 COMBINING MACRON BELOW
-                           )))
-    (cl-flet* ((nonspacing-mark-p (char) (memq char slug-trim-chars))
-               (strip-nonspacing-marks (s) (ucs-normalize-NFC-string
-                                            (apply #'string
-                                                   (seq-remove #'nonspacing-mark-p (ucs-normalize-NFD-string s)))))
-               (cl-replace (inputString pair) (replace-regexp-in-string (car pair) (cdr pair) inputString)))
-      (let* ((pairs `(("[^[:alnum:][:digit:]]" . "_") ;; convert anything not alphanumeric
-                      ("__*" . "_")                   ;; remove sequential underscores
-                      ("^_" . "")                     ;; remove starting underscore
-                      ("_$" . "")))                   ;; remove ending underscore
-             (slug (-reduce-from #'cl-replace (strip-nonspacing-marks inputString) pairs)))
-        (downcase slug)))))
+    (let* ((s (downcase (string-trim s)))
+           (s (replace-regexp-in-string "[^[:alnum:][:space:]-]" "" s))
+           (s (replace-regexp-in-string "[[:space:]]+" "-" s)))
+      (replace-regexp-in-string "^-\\|-$" "" s)))
 
 (defun ndk/get-keyword-key-value (kwd)
   "Only to be used by `org-lectures-get-keyword-value'.
@@ -247,7 +247,7 @@ new org file is created, in `org-lectures-dir', and with
 the course's default properties all set up."
         (interactive)
         (let* ((course (downcase (completing-read "Insert short course title:" ())))
-                (course-org-file (expand-file-name (concat "course_" course ".org") org-lectures-dir)))
+               (course-org-file (org-lectures-get-course-info-file course)))
           (cond
            ((file-exists-p course-org-file)
                 (org-lectures-open-course (upcase course)))
@@ -275,6 +275,7 @@ when called by `org-lectures-open-course'"
 Works only if inside an org file with the 'COURSE' property, or
 when called by `org-lectures-open-course'"
   (interactive)
+  (message "org-lectures-dired-course-folder Function will be deprecated in later version")
   (let* ((course (or course (org-lectures-get-keyword-value "COURSE"))))
     (unless (symbolp course)
       (message (concat "Course " course " folder opened")))
@@ -298,7 +299,7 @@ creating a new one. Gives the option to:
 	 ((string-equal lecture-answer "OF")
 	  (org-lectures-dired-course-folder course))
 	 ((string-equal lecture-answer "INFO")
-	  (org-open-file (expand-file-name (concat "course_" course ".org") org-lectures-dir ))))
+	  (org-open-file (org-lectures-get-course-info-file course))))
       (org-open-file (car (last lecture-answer))))))
 
 (defun org-lectures-get-lecture-prompt-string-list (course-lectures)
@@ -363,12 +364,7 @@ If the subdirectory does not exist, it creates it."
 (defun org-lectures-create-new-lecture (&optional COURSE INSTITUTION)
   "Create a new file for COURSE of INSTITUTION.
 
-FIXME: This is the old documentation:
-
-It creates a new buffer in org mode with some simple metadata
-information (specifically selected for lectures: TITLE, DATE,
-INSTITUTION,COURSE). It is designed to be used along with the
-`org-lectures-save-lecture-buffer-to-file' function.
+Populate it according to `org-lectures-file-template'.
 
 Optional arguments exist:
 
@@ -384,13 +380,16 @@ automatically populated by 'A.U.Th' if left empty."
 			   ;; This function also checks whether such a func exists
 			   (org-lectures-set-lectures-filename COURSE)
 			   (expand-file-name (concat "course_" COURSE) org-lectures-dir))))
+    (let* ((id   (concat "lec-" COURSE "-"))
+	   (date (format-time-string "<%Y-%m-%d>"))
+	   ;; Join tags, with a space in-between
+	   (tags (string-join (seq-map (lambda (x) (cond ((stringp x) x) ((consp x) (car x)) (t nil))) org-lectures-default-tag-alist) " ")) 
+	   (spec (format-spec-make ?i id ?d date ?c COURSE ?I INSTITUTION ?t tags))
+	   (payload (format-spec org-lectures-file-template spec t)))
+      (write-region payload nil lecture-filename))
 
-    ;; Populate lecture
-    (write-region
-     (concat ":PROPERTIES:\n:ID: lec-" COURSE "-" "\n:END:\n#+TITLE: Διάλεξη:\n#+FILETAGS: lecture\n#+DATE: " (format-time-string "<%Y-%m-%d>") "\n#+FILETAGS: lecture\n#+COURSE: " COURSE "\n#+INSTITUTION: " INSTITUTION "\n")
-     nil lecture-filename)
-    ;; Add task in inbox
-    (write-region (concat "\n* ACTION \[\[" lecture-filename "\]\]\n") nil (expand-file-name "inbox.org" org-directory) t)
+    (if org-lectures-append-to-inbox
+	(write-region (concat "\n* ACTION \[\[" lecture-filename "\]\]\n") nil (expand-file-name "inbox.org" org-directory) t))
 
     (org-open-file lecture-filename)))
 
@@ -404,8 +403,15 @@ have this property properly filled."
       org-lectures-default-institution
     (org-lectures-get-keyword-value "INSTITUTION"
 				  (expand-file-name (concat "course_" course ".org")
-						    org-lectures-dir))
-    ))
+						    org-lectures-dir))))
+
+(defun org-lectures-get-course-info-file (course)
+  "Return the filename of that course's info file"
+  (let* ((lower-file (expand-file-name (concat "course_" (downcase course) ".org") org-lectures-dir ))
+	 (proper-file (expand-file-name (concat "course_" course ".org") org-lectures-dir )))
+  (if (f-file-p lower-file) ; remnants of a shady past 
+      lower-file
+    proper-file)))
 
 (defun org-lectures-set-lectures-filename(course)
   "Return the lecture's title in a format: `notetype_COURSE_DATE.org'.
