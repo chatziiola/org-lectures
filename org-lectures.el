@@ -116,6 +116,9 @@ that it (maybe) utilizes consult, or simply refactoring so that
 it is not so hastily written. In any case, FIXME.
 ")
 
+(defvar org-lectures--course-cache nil
+  "Cache for the course index data loaded from the index file.")
+
 (defvar org-lectures-file-template
   ":PROPERTIES:
 :ID: %i
@@ -156,77 +159,60 @@ Works only for buffers using the Org-Mode syntax."
           (plist-get data :value))))
 
 (defun org-lectures-get-keyword-value (key &optional file)
-  "Return the value with KEY in the current org buffer.
-
-More specifically, in the following example, 'Gilbert Strang'
-would be what's returned:
-
-File contents:
-    ...
-    #+Professor: Gilbert Strang
-    ...
-
-Command:
-    (org-lectures-get-keyword-value \"Professor\")
-
-If FILE argument is given, then instead of searching inside the
-current buffer, file is opened and the function is run there.
-
-May also be used with a list of keys in a recursive manner."
-  ;; TODO: THAT FILE CHECK SHOULD MOST PROBABLY BE BETTER
-  (let ((file (or file buffer-file-name)))
-    (if (not (string-blank-p file))
-        (with-current-buffer (find-file-noselect file)	;;Anyway: visit that file
-          (let ((temp-map				;; This is to avoid multiple calls of the same function - they are unecessary
-		 (org-element-map
-		     (org-element-parse-buffer 'greater-element)
-		     '(keyword) #'ndk/get-keyword-key-value)))
-	    (cond
-	     ((proper-list-p key)			;; If the KEY element is a list
-	      (let ((keyVals '()))
-		(cl-loop for title in key do
-			 (push (nth 1 (assoc title temp-map)) keyVals))
-		keyVals))
-	     (t					;; Else it must be a single element
-	      (nth 1 (assoc key temp-map)))))))))
+  "Return the value for KEY in an Org buffer.
+If FILE is given, find that file and check there. Otherwise, use
+the current buffer.
+If KEY is a list, return a list of corresponding values."
+  (if file
+      (with-temp-buffer
+        (insert-file-contents file)
+        (org-lectures--get-keyword-value-from-buffer key))
+    (org-lectures--get-keyword-value-from-buffer key)))
 
 (defun org-lectures-find-course ()
   "Default driver function of `org-lectures.el'."
   (interactive)
   (let* ((course-answer (org-lectures-select-course-from-list)))
     (cond
-     ;; FIXME - if 4 letters overload create-new-course to automatically create that course.
-     ((and (stringp course-answer) (string-equal course-answer "NC"))
-        (org-lectures-create-new-course))
+     ((string-equal course-answer "NC")
+      (org-lectures-create-new-course))
      (t
-      (org-lectures-open-course (upcase (car course-answer)))))))
+      (org-lectures-open-course (upcase course-answer))))))
 
 ; Minor modification so that I can use it in the publishing functions as well
-(defun org-lectures-select-course-from-list()
- "Show a prompt and return a course."
-  (let* ((course-prompt-list
-             (append
-              ;; FIXME spaghetti code, I'm thinking of having simply the file-title. No need for more
-              ;; shortcourse | professor | longcourse | institution
-              (seq-map
-	       (lambda (e) (list (format "%-5s %-20s %-35s %-10s" (nth 0 e) (nth 1 e)(nth 2 e) (nth 3 e)) e))
-	       (org-lectures-get-course-list))
-              (list '("New Course" "NC"))))
-         (course-answer
-          (car (cdr (assoc (completing-read "Select Course: " course-prompt-list) course-prompt-list)))))
-   course-answer))
+(defun org-lectures-select-course-from-list ()
+  "Show a prompt and return the selected course's ID."
+  (let* ((courses (org-lectures-get-course-list))
+         (course-prompt-alist
+          (append
+           (mapcar
+            (lambda (course-plist)
+              (let ((prompt-string
+                     (format "%-5s %-20s %-35s %-10s"
+                             (plist-get course-plist :course-id)
+                             (plist-get course-plist :professor)
+                             (plist-get course-plist :title)
+                             (plist-get course-plist :institution)))
+                    (course-id (plist-get course-plist :course-id)))
+                (cons prompt-string course-id)))
+            courses)
+           (list (cons "New Course" "NC"))))
+         (selected-prompt (completing-read "Select Course: " course-prompt-alist))
+         (selected-course-id (cdr (assoc selected-prompt course-prompt-alist))))
+    selected-course-id))
 
 (defun org-lectures-get-course-list ()
-  "Return a list of the courses in `org-lectures-dir'."
-  (let ((course-files (directory-files org-lectures-dir 'full "course_.*.org"))
-	(out '()))
-    (cl-loop for file in course-files do
-	     (if (not (file-directory-p file))
-		 (push (append
-			(org-lectures-get-keyword-value '("INSTITUTION" "TITLE" "PROFESSOR" "COURSE" ) file)
-			(list file))
-		       out)))
-    out))
+  "Return a list of course property lists from the index."
+  (let ((index (org-lectures--get-index)))
+    (mapcar (lambda (course-entry)
+              (let* ((course-id (car course-entry))
+                     (props (cdr course-entry)))
+                (list :course-id course-id
+                      :file (plist-get props :file)
+                      :title (plist-get props :title)
+                      :professor (plist-get props :professor)
+                      :institution (plist-get props :institution))))
+            index)))
 
 (defun org-lectures-create-new-course ()
   "Create a new course.
@@ -254,7 +240,16 @@ the course's default properties all set up."
            ((<= (length course) 4)
                 (org-open-file course-org-file)
                 (insert ":PROPERTIES:\n:ID: " course "-course\n:END:\n#+TITLE:\n#+PROFESSOR:\n#+INSTITUTION: " org-lectures-default-institution "\n#+SEMESTER: " org-lectures-current-semester "\n#+FILETAGS: course\n#+COURSE: " (upcase course)  "\n")
-                (save-buffer))
+                (save-buffer)
+                (let ((new-course-entry
+                       `(,(upcase course) . (:title ""
+                                            :professor ""
+                                            :institution ,org-lectures-default-institution
+                                            :file ,course-org-file
+                                            :lectures '()))))
+                  (org-lectures--get-index)
+                  (push new-course-entry org-lectures--course-cache)
+                  (org-lectures--write-index-to-file)))
            (t
             (error "Invalid Course Name. Short title must be less than 5 characters long")))))
 
@@ -387,23 +382,28 @@ automatically populated by 'A.U.Th' if left empty."
 	   (spec (format-spec-make ?i id ?d date ?c COURSE ?I INSTITUTION ?t tags))
 	   (payload (format-spec org-lectures-file-template spec t)))
       (write-region payload nil lecture-filename))
+      (let* ((new-lecture-entry `(,date . (:title "Διάλεξη:"
+                                           :file ,lecture-filename))))
+        (org-lectures--get-index)
+        (let ((course-in-cache (assoc COURSE org-lectures--course-cache)))
+          (when course-in-cache
+            (setf (plist-get (cdr course-in-cache) :lectures)
+                  (cons new-lecture-entry (plist-get (cdr course-in-cache) :lectures)))))
+        (org-lectures--write-index-to-file)))
 
     (if org-lectures-append-to-inbox
 	(write-region (concat "\n* ACTION \[\[" lecture-filename "\]\]\n") nil (expand-file-name "inbox.org" org-directory) t))
 
-    (org-open-file lecture-filename)))
+    (org-open-file lecture-filename))
 
 (defun org-lectures-get-lecture-institution (course)
-  "Return the proper institution for completion when creating a lecture.
-
-This ensures that the user needs to only set the INSTITUTION in
-the COURSE information file in order for all of its lectures ot
-have this property properly filled."
+  "Return the proper institution for a course from the index."
   (if (string-blank-p course)
       org-lectures-default-institution
-    (org-lectures-get-keyword-value "INSTITUTION"
-				  (expand-file-name (concat "course_" course ".org")
-						    org-lectures-dir))))
+    (let* ((index (org-lectures--get-index))
+           (course-data (cdr (assoc course index))))
+      (or (plist-get course-data :institution)
+          org-lectures-default-institution))))
 
 (defun org-lectures-get-course-info-file (course)
   "Return the filename of that course's info file"
@@ -441,6 +441,79 @@ have this property properly filled."
                    (org-lectures--get-collision-suffix))))
     (if suffix
 	(format "%s_%s_%s_%s.org" note-type course date-str suffix) base-filename)))
+
+(defun org-lectures--get-keyword-value-from-buffer (key)
+  "Return the value(s) for KEY(s) from the current buffer's Org content.
+If KEY is a list, return a list of corresponding values."
+  (let ((keyword-map (org-element-map (org-element-parse-buffer 'greater-element)
+                                      '(keyword) #'ndk/get-keyword-key-value)))
+    (if (listp key)
+        (mapcar (lambda (k) (cadr (assoc k keyword-map))) key)
+      (cadr (assoc key keyword-map)))))
+
+(defun org-lectures-rebuild-index ()
+  "Scan all course and lecture files and rebuild the index.
+The index is stored in `.org-lectures-index.el` in `org-lectures-dir`.
+This function reads files into temporary buffers and does not leave them open."
+  (interactive)
+  (let ((index-file (expand-file-name ".org-lectures-index.el" org-lectures-dir))
+        (course-files (directory-files org-lectures-dir t "course_.*\\.org$"))
+        (index-data '()))
+
+    (dolist (course-file course-files)
+      (with-temp-buffer
+        (insert-file-contents course-file)
+        (let* ((course-id (org-lectures--get-keyword-value-from-buffer "COURSE"))
+               (course-title (org-lectures--get-keyword-value-from-buffer "TITLE"))
+               (course-prof (org-lectures--get-keyword-value-from-buffer "PROFESSOR"))
+               (course-inst (org-lectures--get-keyword-value-from-buffer "INSTITUTION")))
+          (when course-id
+            (let* ((course-lecture-dir (expand-file-name (concat "course_" course-id) org-lectures-dir))
+                   (lecture-files (when (file-directory-p course-lecture-dir)
+                                    (directory-files course-lecture-dir t (concat (regexp-opt (mapcar #'cdr org-lectures-note-type-alist)) "_" course-id "_.*\\.org$"))))
+                   (lecture-data '()))
+              (dolist (lecture-file lecture-files)
+                (with-temp-buffer
+                  (insert-file-contents lecture-file)
+                  (let* ((lecture-title (org-lectures--get-keyword-value-from-buffer "TITLE"))
+                         (lecture-date (org-lectures--get-keyword-value-from-buffer "DATE")))
+                    (when lecture-date
+                      (push `(,lecture-date . (:title ,lecture-title
+                                              :file ,lecture-file))
+                            lecture-data)))))
+              (push `(,course-id . (:title ,course-title
+                                    :professor ,course-prof
+                                    :institution ,course-inst
+                                    :file ,course-file
+                                    :lectures ,lecture-data))
+                    index-data))))))
+
+    (with-temp-buffer
+      (require 'pp)
+      (pp index-data (current-buffer))
+      (write-file index-file))
+    (message "org-lectures index rebuilt.")))
+
+(defun org-lectures--get-index ()
+  "Load and return the course index.
+If the index file does not exist or is stale, it is rebuilt.
+The index data is cached in `org-lectures--course-cache`."
+  (let ((index-file (expand-file-name ".org-lectures-index.el" org-lectures-dir)))
+    (when (or (not (file-exists-p index-file))
+              (file-newer-than-file-p org-lectures-dir index-file))
+      (org-lectures-rebuild-index))
+    (or org-lectures--course-cache
+        (with-temp-buffer
+          (insert-file-contents index-file)
+          (setq org-lectures--course-cache (read (current-buffer)))))))
+
+(defun org-lectures--write-index-to-file ()
+  "Write the current in-memory course cache to the index file."
+  (let ((index-file (expand-file-name ".org-lectures-index.el" org-lectures-dir)))
+    (with-temp-buffer
+      (require 'pp)
+      (pp org-lectures--course-cache (current-buffer))
+      (write-file index-file))))
 
 (provide 'org-lectures)
 ;;; org-lectures.el ends here
