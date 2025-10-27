@@ -182,24 +182,33 @@ If KEY is a list, return a list of corresponding values."
 ; Minor modification so that I can use it in the publishing functions as well
 (defun org-lectures-select-course-from-list ()
   "Show a prompt and return the selected course's ID."
-  (let* ((courses (org-lectures-get-course-list))
-         (course-prompt-alist
-          (append
-           (mapcar
-            (lambda (course-plist)
-              (let ((prompt-string
-                     (format "%-5s %-20s %-35s %-10s"
-                             (plist-get course-plist :course-id)
-                             (plist-get course-plist :professor)
-                             (plist-get course-plist :title)
-                             (plist-get course-plist :institution)))
-                    (course-id (plist-get course-plist :course-id)))
-                (cons prompt-string course-id)))
-            courses)
-           (list (cons "New Course" "NC"))))
-         (selected-prompt (completing-read "Select Course: " course-prompt-alist))
-         (selected-course-id (cdr (assoc selected-prompt course-prompt-alist))))
-    selected-course-id))
+  (let ((courses (org-lectures-get-course-list)))
+    (if (not courses)
+        (let ((selection (completing-read "Select Course: " '("New Course"))))
+          (if (string-equal selection "New Course") "NC" nil))
+      (let* (;; Dynamic column widths for pretty alignment
+             (max-title-width (apply #'max 0 (mapcar (lambda (c) (length (or (plist-get c :title) ""))) courses)))
+             (max-prof-width (apply #'max 0 (mapcar (lambda (c) (length (or (plist-get c :professor) ""))) courses)))
+             (max-inst-width (apply #'max 0 (mapcar (lambda (c) (length (or (plist-get c :institution) ""))) courses)))
+             (vertico-p (and (fboundp 'vertico-mode) vertico-mode))
+             (format-string-vertico (format "%%-5s %%-%ds │ %%-%ds │ %%-%ds" max-title-width max-prof-width max-inst-width))
+             (format-string-default (format "%%-5s %%-%ds %%-%ds %%-%ds" max-prof-width max-title-width max-inst-width))
+             (course-prompt-alist
+              (append
+               (mapcar
+                (lambda (course-plist)
+                  (let* ((course-id (or (plist-get course-plist :course-id) ""))
+                         (professor (or (plist-get course-plist :professor) ""))
+                         (title (or (plist-get course-plist :title) ""))
+                         (institution (or (plist-get course-plist :institution) "")))
+                    (cons (if vertico-p
+                              (format format-string-vertico course-id title professor institution)
+                            (format format-string-default course-id professor title institution))
+                          course-id)))
+                courses)
+               (list (cons "New Course" "NC")))))
+        (let* ((selected-prompt (completing-read "Select Course: " course-prompt-alist)))
+          (cdr (assoc selected-prompt course-prompt-alist)))))))
 
 (defun org-lectures-get-course-list ()
   "Return a list of course property lists from the index."
@@ -211,8 +220,7 @@ If KEY is a list, return a list of corresponding values."
                       :file (plist-get props :file)
                       :title (plist-get props :title)
                       :professor (plist-get props :professor)
-                      :institution (plist-get props :institution))))
-            index)))
+                      :institution (plist-get props :institution)))) index)))
 
 (defun org-lectures-create-new-course ()
   "Create a new course.
@@ -297,50 +305,42 @@ creating a new one. Gives the option to:
 	  (org-open-file (org-lectures-get-course-info-file course))))
       (org-open-file (car (last lecture-answer))))))
 
-(defun org-lectures-get-lecture-prompt-string-list (course-lectures)
-  "Return the prompt string for displaying COURSE-LECTURES.
-
-Comment: Not an ideal implementation, but to make it more
-manageable."
-  ;; Get lecture prompt string
-  (seq-map (lambda (e)
-	     (list (format "%-20s %-25s %-s" (nth 0 e) (nth 1 e)(nth 2 e)) e))
-	   course-lectures))
-
 (defun org-lectures-select-lecture-from-course (course &optional publish)
-  "Open a COURSE lecture for viewing or create a new one.
-
-Used by `org-lectures-open-course' and
-`org-lectures-publish-lecture'. It opens a minibuffer prompt
-allowing to select between an existing lecture and creating a new
-one, opening the course's folder or having course info. If an
-existing course is selected then a list in the form of '((DATE
-PROFESSOR TITLE) FILE) is returned, while otherwise it returns
-just a string ('NL' 'OF' or 'INFO')
-
-An optional argument of PUBLISH has been added to filter
-unecessary options for when called by
-`org-lectures-publish-lecture'."
-  (let* ((course-lectures '()))
-    (cl-loop for file in (org-lectures-get-lecture-file-list course) do
-	     ;; These get added in reverse in the final prompt
-	     (push (append
-		    (org-lectures-get-keyword-value org-lectures-lecture-data-alist file)
-		    (list file))
-		   course-lectures
-		   ))
-    (let*  ((lecture-prompt-list
-	     (append
-	      (org-lectures-get-lecture-prompt-string-list course-lectures)
-	      (unless publish
-		(list'("New Lecture" "NL")
-		     '("Open Course Folder" "OF")
-		     '("Course Info" "INFO")))))
-	    (lecture-answer
-	     (car (cdr (assoc
-			(completing-read "Select Lecture: " lecture-prompt-list)
-			lecture-prompt-list)))))
-      lecture-answer)))
+  "Open a COURSE lecture for viewing or create a new one."
+  (let* ((course-lectures
+          (mapcar (lambda (file)
+                    (cons course (append (org-lectures-get-keyword-value org-lectures-lecture-data-alist file)
+                                         (list file))))
+                  (org-lectures-get-lecture-file-list course))))
+    (if (not course-lectures)
+        (let ((selection (completing-read "Select Lecture: " '("New Lecture" "Open Course Folder" "Course Info"))))
+          (cond ((string-equal selection "New Lecture") "NL")
+                ((string-equal selection "Open Course Folder") "OF")
+                ((string-equal selection "Course Info") "INFO")
+                (t nil)))
+      (let* ((max-date-width (apply #'max 0 (mapcar (lambda (l) (length (or (nth 2 l) ""))) course-lectures)))
+             (max-title-width (apply #'max 0 (mapcar (lambda (l) (length (or (nth 0 l) ""))) course-lectures)))
+             (max-prof-width (apply #'max 0 (mapcar (lambda (l) (length (or (nth 1 l) ""))) course-lectures)))
+             (vertico-p (and (fboundp 'vertico-mode) vertico-mode))
+             (format-string
+              (if vertico-p
+                  (format "%%-%ds │ %%-%ds │ %%-%ds" max-date-width max-title-width max-prof-width)
+                (format "%%-%ds %%-%ds %%-%ds" max-date-width max-title-width max-prof-width)))
+             (lecture-prompt-list
+              (append
+               (mapcar
+                (lambda (lecture)
+                  (let ((title (or (nth 0 lecture) ""))
+                        (professor (or (nth 1 lecture) ""))
+                        (date (or (nth 2 lecture) "")))
+                    (cons (format format-string date title professor) lecture)))
+                course-lectures)
+               (unless publish
+                 (list '("New Lecture" . "NL")
+                       '("Open Course Folder" . "OF")
+                       '("Course Info" . "INFO"))))))
+        (let* ((selected-prompt (completing-read "Select Lecture: " lecture-prompt-list)))
+          (cdr (assoc selected-prompt lecture-prompt-list)))))))
 
 (defun org-lectures-get-lecture-file-list (course)
   "Return a list of lecture files in COURSE.
@@ -377,11 +377,10 @@ automatically populated by 'A.U.Th' if left empty."
 			   (expand-file-name (concat "course_" COURSE) org-lectures-dir))))
     (let* ((id   (concat "lec-" COURSE "-"))
 	   (date (format-time-string "<%Y-%m-%d>"))
-	   ;; Join tags, with a space in-between
 	   (tags (string-join (seq-map (lambda (x) (cond ((stringp x) x) ((consp x) (car x)) (t nil))) org-lectures-default-tag-alist) " ")) 
 	   (spec (format-spec-make ?i id ?d date ?c COURSE ?I INSTITUTION ?t tags))
 	   (payload (format-spec org-lectures-file-template spec t)))
-      (write-region payload nil lecture-filename))
+      (write-region payload nil lecture-filename)
       (let* ((new-lecture-entry `(,date . (:title "Διάλεξη:"
                                            :file ,lecture-filename))))
         (org-lectures--get-index)
@@ -389,12 +388,12 @@ automatically populated by 'A.U.Th' if left empty."
           (when course-in-cache
             (setf (plist-get (cdr course-in-cache) :lectures)
                   (cons new-lecture-entry (plist-get (cdr course-in-cache) :lectures)))))
-        (org-lectures--write-index-to-file)))
+        (org-lectures--write-index-to-file)
 
     (if org-lectures-append-to-inbox
 	(write-region (concat "\n* ACTION \[\[" lecture-filename "\]\]\n") nil (expand-file-name "inbox.org" org-directory) t))
 
-    (org-open-file lecture-filename))
+    (org-open-file lecture-filename)))))
 
 (defun org-lectures-get-lecture-institution (course)
   "Return the proper institution for a course from the index."
@@ -432,7 +431,8 @@ automatically populated by 'A.U.Th' if left empty."
         (org-lectures-sluggify user-input)))))
 
 (defun org-lectures-set-lectures-filename (course)
-  "Return a unique lecture filename in the format `notetype_COURSE_DATE[_SUFFIX].org'."
+  "Return a unique lecture filename using the format:
+`notetype_COURSE_DATE[_SUFFIX].org'."
   (let* ((note-type (org-lectures--get-note-type))
          (date-str (format-time-string "%Y%m%d" (current-time)))
          (base-filename (format "%s_%s_%s.org" note-type course date-str))
