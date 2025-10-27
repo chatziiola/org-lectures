@@ -138,7 +138,7 @@ Use `format-spec` codes:
 (defvar org-lectures-default-tag-alist '("lecture" "todo")
   "This variable is used when setting the FILETAGS parameter in new lecture files")
 
-(defun org-lectures-sluggify (inputString)
+(defun org-lectures-sluggify (s)
   "Given a string return it's /sluggified/ version.
 It has only one argument, INPUTSTRING, which is self-described"
     (let* ((s (downcase (string-trim s)))
@@ -354,7 +354,7 @@ If the subdirectory does not exist, it creates it."
   (let* ((course-dir (expand-file-name
 		      (concat "course_" course) org-lectures-dir)))
 
-    (unless (f-directory-p course-dir)
+    (unless (file-directory-p course-dir)
       (make-directory course-dir))
     (directory-files
      course-dir					;inside the course directory
@@ -409,36 +409,38 @@ have this property properly filled."
   "Return the filename of that course's info file"
   (let* ((lower-file (expand-file-name (concat "course_" (downcase course) ".org") org-lectures-dir ))
 	 (proper-file (expand-file-name (concat "course_" course ".org") org-lectures-dir )))
-  (if (f-file-p lower-file) ; remnants of a shady past 
+  (if (file-exists-p lower-file) ; remnants of a shady past 
       lower-file
     proper-file)))
 
-(defun org-lectures-set-lectures-filename(course)
-  "Return the lecture's title in a format: `notetype_COURSE_DATE.org'.
-"
-  (let* ((note-datatype
-	  (if (= (length org-lectures-note-type-alist) 1)
-	      (cdr (car org-lectures-note-type-alist))
-	    (cdr (assoc
-		  (completing-read "Select a title: " (mapcar #'car org-lectures-note-type-alist))
-		  org-lectures-note-type-alist))))
-	 (def-filename (concat note-datatype "_" course  "_" (format-time-string "%Y%m%d"(current-time)) ".org"))
-	 (lecpath (expand-file-name def-filename
-				    (expand-file-name (concat "course_" course) org-lectures-dir)))
-	 ;; If the file already exists
-	 (extrainfo (if (file-exists-p lecpath)
-			(progn
-			  (setq-local prompt (read-string
-					      "A lecture already existed with this filename. Enter complementary information (empty appends hourminutesecond): "))
-			  (if (string-blank-p prompt)
-			      (format-time-string "%H%M%S"(current-time))
-			    (org-lectures-sluggify prompt))
-			  )
-		      ;; Else it is an empty string (a blank one)
-		      "")))
-    (if (string-blank-p extrainfo)
-	def-filename
-      (concat note-datatype "_" course  "_" (format-time-string "%Y%m%d"(current-time)) "_" extrainfo ".org"))))
+(defun org-lectures--get-note-type ()
+  "Interactively select a note type from `org-lectures-note-type-alist'."
+  (let ((types org-lectures-note-type-alist))
+    (if (= (length types) 1)
+        (cdar types)
+      (let* ((prompt "Select a title: ")
+             (options (mapcar #'car types))
+             (choice (completing-read prompt options)))
+        (cdr (assoc choice types))))))
+
+(defun org-lectures--get-collision-suffix ()
+  "Prompt user for info if lecture file exists, returning a filename suffix."
+  (let ((prompt "A lecture with this filename already exists. Enter complementary information (empty appends hour-minute-second): "))
+    (let ((user-input (read-string prompt)))
+      (if (string-blank-p user-input)
+          (format-time-string "%H%M%S" (current-time))
+        (org-lectures-sluggify user-input)))))
+
+(defun org-lectures-set-lectures-filename (course)
+  "Return a unique lecture filename in the format `notetype_COURSE_DATE[_SUFFIX].org'."
+  (let* ((note-type (org-lectures--get-note-type))
+         (date-str (format-time-string "%Y%m%d" (current-time)))
+         (base-filename (format "%s_%s_%s.org" note-type course date-str))
+         (course-dir (expand-file-name (concat "course_" course) org-lectures-dir))
+         (suffix (when (file-exists-p (expand-file-name base-filename course-dir))
+                   (org-lectures--get-collision-suffix))))
+    (if suffix
+	(format "%s_%s_%s_%s.org" note-type course date-str suffix) base-filename)))
 
 (provide 'org-lectures)
 ;;; org-lectures.el ends here
