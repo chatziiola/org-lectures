@@ -68,7 +68,6 @@ It allows for the smooth integration of latex inside of org mode.
        Lecture" for that ~org-lectures-create-new-lecture~)
 
 
-
 * Comment Headers
 
 Header

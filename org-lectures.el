@@ -228,14 +228,13 @@ If KEY is a list, return a list of corresponding values."
 More specifically this function creates:
 1. The course info file (course_<course>.org)
 2. The course lectures directory (...)
-3. TODO anything else here?
 
 Function called through `org-lectures-find-course', when the
 creation of a new course is necessary. It prompts the user for
 input (short title for the course), up to 4 letters which serve
 as the course's ID. It checks whether a course with that ID
 already exists and if it does, it uses `org-lectures-open-course'
-instead of creating any new files. If, however the filel dows not
+instead of creating any new files. If, however the file does not
 exist, and the length of the short title is less than 4 letters a
 new org file is created, in `org-lectures-dir', and with
 the course's default properties all set up."
@@ -275,7 +274,7 @@ when called by `org-lectures-open-course'"
 (defun org-lectures-dired-course-folder (&optional course)
   "Open the selected course's folder (with Dired).
 
-Works only if inside an org file with the `COURSE' property, or
+Works only if inside an org file with the 'COURSE' property, or
 when called by `org-lectures-open-course'"
   (interactive)
   (message "org-lectures-dired-course-folder Function will be deprecated in later version")
@@ -293,7 +292,7 @@ creating a new one. Gives the option to:
 1. Create new lecture
 2. Open an already existing lecture
 3. Open the course's folder
-4. Open the course's info file `course_<course>.org')."
+4. Open the course's info file `course_<course>.org'."
   (let* ((lecture-answer (org-lectures-select-lecture-from-course course)))
     (if (stringp lecture-answer)
 	(cond
@@ -441,6 +440,97 @@ automatically populated by 'A.U.Th' if left empty."
                    (org-lectures--get-collision-suffix))))
     (if suffix
 	(format "%s_%s_%s_%s.org" note-type course date-str suffix) base-filename)))
+
+(require 'ox-latex) ; Ensure the latex exporter is available
+
+(defun org-lectures-run-latexmk (file)
+  "Starts a continuous latexmk process for the given file."
+  (let* ((tex-file-name (concat (file-name-sans-extension file) ".tex"))
+	 (process-name (format "lecture-mk-%s" (file-name-nondirectory file)))
+         (output-buffer (get-buffer-create (format "*latexmk-%s*" (file-name-nondirectory file))))
+         ;; The command components
+         (program "latexmk")
+         (args (list "-pvc" "-interaction=nonstopmode" "-xelatex" "-shell-escape" tex-file-name)))
+
+    (message "Starting %s with PID %s" program process-name)
+
+    ;; Kill any existing process with the same name first
+    (let ((existing-proc (get-process process-name)))
+      (when existing-proc (kill-process existing-proc)))
+
+    ;; Start the new process asynchronously
+    (org-lectures-export-to-latex file)
+    (apply 'start-process process-name output-buffer program args)
+    ))
+
+
+(defun org-lectures-kill-latexmk (file)
+  "Kills the continuous latexmk process associated with the given file."
+  (let* ((process-name (format "lecture-mk-%s" (file-name-nondirectory file)))
+         (proc (get-process process-name)))
+    (when proc
+      (kill-process proc)
+      (message "Killed existing latexmk process: %s" process-name))))
+
+;; --- Setup and Teardown Functions (Revised) ---
+
+(defun org-lectures-setup ()
+  "Setup routine for org-lectures-minor-mode."
+  (interactive)
+  (let* ((file (buffer-file-name))
+	(ext (file-name-extension file)))
+    (cond
+     ((or (null file) (not (string-match "org" ext)))
+      (message "Error: Cannot activate org-lectures-minor-mode; buffer is not visiting an Org file.")
+      (setq org-lectures-minor-mode nil))
+     (t
+      ;; 1. Execute the actual latexmk command using start-process
+      (org-lectures-run-latexmk file)
+      (message "Org Lecture Mode: Asynchronous latexmk -pvc process started.")
+
+      ;; 2. Add the buffer-local write hook
+      (add-hook 'after-save-hook 'org-lectures-export-to-latex nil t)
+      (message "Org Lecture Mode Activated! Buffer-local write hook added.")))))
+
+(defun org-lectures-teardown ()
+  "Teardown routine for org-lectures-minor-mode."
+  (interactive)
+  ;; Kill the running latexmk process
+  (org-lectures-kill-latexmk (buffer-file-name))
+
+  ;; Remove the write hook
+  (remove-hook 'after-save-hook 'org-lectures-export-to-latex t)
+  (message "Org Lecture Mode Deactivated! Hook and latexmk process removed."))
+
+;; --- The Hook Function Remains the Same ---
+
+(defun org-lectures-export-to-latex (&optional file)
+  "Exports the current Org buffer to LaTeX."
+  (interactive)
+  (let* ((org-file (or file (buffer-file-name)))
+	 (tex-file (concat (file-name-sans-extension org-file) ".tex")))
+    (if org-file
+	(if org-lectures-minor-mode
+	    (progn
+	      (message "Org Lecture Mode: Exporting buffer %s to LaTeX..." org-file)
+	      (message "Org Lecture Mode: Will write to %s" tex-file)
+	      ;; Did not use async because it messed with messages
+	      (let* ((output-file (org-export-to-file 'latex  tex-file)))
+		(message "Org Lecture Mode: Exported to %s. latexmk will now recompile." output-file))
+	      )
+	  (message "Org Lecture Mode Inactive: Will not export"))
+      (error "File does not exist")
+      )))
+
+;; --- The Minor Mode Definition (Unchanged) ---
+
+(define-minor-mode org-lectures-minor-mode
+  "A minor mode for lecture notes that runs a shell command and exports to LaTeX on save."
+  :lighter " Lecture"
+  :keymap nil
+  (if org-lectures-minor-mode
+      (org-lectures-setup)
+    (org-lectures-teardown)))
 
 (defun org-lectures--get-keyword-value-from-buffer (key)
   "Return the value(s) for KEY(s) from the current buffer's Org content.
