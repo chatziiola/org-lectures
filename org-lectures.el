@@ -275,7 +275,7 @@ when called by `org-lectures-open-course'"
 (defun org-lectures-dired-course-folder (&optional course)
   "Open the selected course's folder (with Dired).
 
-Works only if inside an org file with the 'COURSE' property, or
+Works only if inside an org file with the `COURSE' property, or
 when called by `org-lectures-open-course'"
   (interactive)
   (message "org-lectures-dired-course-folder Function will be deprecated in later version")
@@ -377,7 +377,7 @@ automatically populated by 'A.U.Th' if left empty."
 			   (expand-file-name (concat "course_" COURSE) org-lectures-dir))))
     (let* ((id   (concat "lec-" COURSE "-"))
 	   (date (format-time-string "<%Y-%m-%d>"))
-	   (tags (string-join (seq-map (lambda (x) (cond ((stringp x) x) ((consp x) (car x)) (t nil))) org-lectures-default-tag-alist) " ")) 
+	   (tags (string-join (seq-map (lambda (x) (cond ((stringp x) x) ((consp x) (car x)) (t nil))) org-lectures-default-tag-alist) " "))
 	   (spec (format-spec-make ?i id ?d date ?c COURSE ?I INSTITUTION ?t tags))
 	   (payload (format-spec org-lectures-file-template spec t)))
       (write-region payload nil lecture-filename)
@@ -408,7 +408,7 @@ automatically populated by 'A.U.Th' if left empty."
   "Return the filename of that course's info file"
   (let* ((lower-file (expand-file-name (concat "course_" (downcase course) ".org") org-lectures-dir ))
 	 (proper-file (expand-file-name (concat "course_" course ".org") org-lectures-dir )))
-  (if (file-exists-p lower-file) ; remnants of a shady past 
+  (if (file-exists-p lower-file) ; remnants of a shady past
       lower-file
     proper-file)))
 

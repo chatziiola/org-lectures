@@ -1,25 +1,24 @@
 #+TITLE:  Org-Lectures
 #+PROPERTY: header-args :tangle (let ((org-use-tag-inheritance t)) (if (member "INACTIVE" (org-get-tags))  "no" "org-lectures.el"))
 
-I always liked [[https://castel.dev][Gilles']] note taking set up, even though it was not "the right
+I always liked [[https://castel.dev][Gilles]]'s note-taking setup, even though it was not "the right
 tool" for me. Working in org not only feels more intuitive but allows me to be
 *way* more flexible - I can always publish my lectures in multiple forms, without
 really breaking a sweat...
 
 * Usage
-Simplifying and automating the mundane task of creating, organizing, and finding
-your static notes so that you can focus on their actual content. It does not
-*alter* the way you would otherwise interact with your org files, like other
-widely used packages.
+This package aims to simplify and automate the mundane task of creating, organizing, and finding
+your static notes, allowing you to focus on their actual content. Unlike other widely used packages,
+it does not *alter* your established workflow with Org files.
 
-After setting your ~org-lectures-dir~ you can expect it to quickly be populated in
-the following form
-#+begin_example
- org-lectures-dir			        # All your courses will be in here
- ├── course_<COURSE>			        # course - specific folder
- │   └── <lec_type>_<COURSE>_<DATE>.org	# lecture files
- └── course_<COURSE>.org			# course description file
-#+end_example
+The package maintains a straightforward directory structure within the `org-lectures-dir`:
+
+1. **Course Index File:** Each course is represented by a `course_<name>.org`
+   file. This file serves as the central index for course-specific information
+   and generic notes. It provides an overview of the course but does not
+   automatically link to individual lectures.
+2. **Course Lecture Directory:** Each course also has a dedicated directory. This
+   directory is where all the lecture files for that specific course are placed.
 
 I'm keeping this sort because I do not feel like elaborating right now. I'll add
 extensive documentation by the end of the week.
@@ -39,44 +38,36 @@ extensive documentation by the end of the week.
   )
 #+end_src
 
-** Quick Description:
+** Quick Description
 This package allows the user to:
 1. Easily organize and manage their lecture notes through an interactive prompt.
 2. Easily navigate between lectures of the same course
-3. Quckly open the course's directory (or directories if you use a split configuration)
+3. Quickly open the course's directory (or directories if you use a split configuration)
 
 ** Tips
-Check out the ~cdlatex~ package, especially if you are in a field with plenty of mathematics. 
+Check out the ~cdlatex~ package, especially if you are in a field with plenty of mathematics.
 It allows for the smooth integration of latex inside of org mode.
 
-** How to use it:
+** How to use it
   1. User calls ~find-course~:
      - A minibuffer appears in which the user can filter courses through:
        - Short-Title
        - Title
        - Professor
        - Institution
-     - If the user selects an existent course go to 2. Otherwise a new course
-       will be created ( the user must select "New Course" for that: ~org-lectures-create-new-course~ )
+     - If the user selects an existing course go to 2. Otherwise a new course
+       will be created (the user must select "New Course" for that: ~org-lectures-create-new-course~)
   2. ~org-lectures-open-course~ is called:
      - A minibuffer appears in which the user can filter the selected course's
        lectures through:
        - Date
        - Professor name
        - Lecture Title
-     - If the user selects an existent lecture: it opens in the same window.
-       Otherwise a new lecture may be created ( the user must select "New
+     - If the user selects an existing lecture: it opens in the same window.
+       Otherwise a new lecture may be created (the user must select "New
        Lecture" for that ~org-lectures-create-new-lecture~)
 
-** TODOs:
-- [ ] Maybe implement classes. This is an obvious example of a program that
-  could be improved with OOP.
-  - https://www.gnu.org/software/emacs/manual/html_node/eieio/Building-Classes.html
-- [ ] See ~org-lectures-find-course~ for improvement (quicker course creation)
-- [ ] See maybe that you publish the /strange/ keyword library as well, because I
-  do not like using it like that in various places
-- [ ] See maybe that you publish the /strange/ keyword library as well, because
-  I do not like using it like that in various places
+
 
 * Comment Headers
 
@@ -270,9 +261,7 @@ Use `format-spec` codes:
 
 * Functions
 ** String Normalization
-I wanted to be able to use a /slug/ function just like the one used in org-roam
-and knowing that it existed there I found no reason to lose time on implementing
-a different one.
+Inspired by `org-roam`, this package utilizes a slug function. Rather than reimplementing similar functionality, an existing solution was adapted.
 - Source:  https://github.com/org-roam/org-roam
 - <2025-10-25 Sat>: I opted for a much simpler version:
   - Keeps only alphanumeric characters - discards everything else.
@@ -288,11 +277,6 @@ It has only one argument, INPUTSTRING, which is self-described"
 #+end_src
 
 ** Get-keyword-value
-#+begin_comment
-This may be more than worth to replace with regexp expressions, but it works
-fine, even though the file needs to be launched, wasting some time.
-#+end_comment
-
 Functions to extract the values of keywords set up like the following at the top
 of org-mode documents
 #+begin_example
@@ -300,7 +284,7 @@ of org-mode documents
 #+PROFESSOR: Gilbert Strang
 #+end_example
 
-This function and the next ( even though that one has been slightly modified )
+This function and the next (even though that one has been slightly modified)
 were found in [[https://stackoverflow.com/questions/66574715/how-to-get-org-mode-file-title-and-other-file-level-properties-from-an-arbitra][StackOverflow]].
 
 #+begin_src elisp
@@ -332,13 +316,10 @@ If KEY is a list, return a list of corresponding values."
 
 #+end_src
 
-Now some notes on the latter function:
-- At some point I had implemented ~(kill-buffer)~ to avoid having too many open
-  buffers in my emacs instance. That, even though, had its merits, resulted in
-  extremely reduced performance. Now, when first running the script on a
-  specific category (or in general) it may take some time[fn:1] 
+Note on performance:
+- Earlier implementations that used `(kill-buffer)` to manage open buffers led to significantly reduced performance. While the current approach might still incur some initial delay when processing a new category, it avoids the performance overhead of frequent buffer creation and destruction.
 
-** Find-course
+** Finding a Course
 Find-course: This is the entry point
 #+begin_src elisp
 
@@ -354,7 +335,7 @@ Find-course: This is the entry point
 
 #+end_src
 
-** Select-course-from-list
+** Selecting a Course from the List
 Select course from course prompt
 #+begin_src elisp
 ; Minor modification so that I can use it in the publishing functions as well
@@ -389,7 +370,7 @@ Select course from course prompt
           (cdr (assoc selected-prompt course-prompt-alist)))))))
 #+end_src
 
-** Get-course-list
+** Retrieving the Course List
 Get list of courses
 #+begin_src elisp
 (defun org-lectures-get-course-list ()
@@ -406,7 +387,7 @@ Get list of courses
 
 #+end_src
 
-** Create-new-course
+** Creating a New Course
 Create new course:
 #+begin_src elisp
 
@@ -416,14 +397,13 @@ Create new course:
 More specifically this function creates:
 1. The course info file (course_<course>.org)
 2. The course lectures directory (...)
-3. TODO anything else here?
 
 Function called through `org-lectures-find-course', when the
 creation of a new course is necessary. It prompts the user for
 input (short title for the course), up to 4 letters which serve
 as the course's ID. It checks whether a course with that ID
 already exists and if it does, it uses `org-lectures-open-course'
-instead of creating any new files. If, however the filel dows not
+instead of creating any new files. If, however the file does not
 exist, and the length of the short title is less than 4 letters a
 new org file is created, in `org-lectures-dir', and with
 the course's default properties all set up."
@@ -451,7 +431,7 @@ the course's default properties all set up."
 
 #+end_src
 
-** Open course folder:
+** Opening the Course Folder
 #+begin_src elisp
 
 (defun org-lectures-open-course-folder (&optional course)
@@ -482,7 +462,7 @@ when called by `org-lectures-open-course'"
 - <2025-10-25 Sat> Deprecated message dired-course-folder. No reason to exist,
   since keybindings for dired do this much more easily.
 
-** Open course or (equally correctly) get list of lectures
+** Opening a Course and Listing Lectures
 #+begin_src elisp
 
 (defun org-lectures-open-course (course)
@@ -494,7 +474,7 @@ creating a new one. Gives the option to:
 1. Create new lecture
 2. Open an already existing lecture
 3. Open the course's folder
-4. Open the course's info file `course_<course>.org')."
+4. Open the course's info file `course_<course>.org'."
   (let* ((lecture-answer (org-lectures-select-lecture-from-course course)))
     (if (stringp lecture-answer)
 	(cond
@@ -508,7 +488,7 @@ creating a new one. Gives the option to:
 
 #+end_src
 
-** Get the lecture-answer
+** Retrieving Lecture Selection
 #+begin_src elisp
 (defun org-lectures-select-lecture-from-course (course &optional publish)
   "Open a COURSE lecture for viewing or create a new one."
@@ -549,8 +529,7 @@ creating a new one. Gives the option to:
 
 #+end_src
 
-** Get a list of all the lecture files.
-- This one is actually more of a /macro/, but a rather useful one.
+** Retrieving All Lecture Files
 #+begin_src elisp
 
 (defun org-lectures-get-lecture-file-list (course)
@@ -587,7 +566,7 @@ regexp-opt is a built-in Emacs Lisp function that takes a list of strings and re
 
 So, (regexp-opt (mapcar #'cdr my-alist)) constructs a regular expression that matches any of the keys in my-alist. This regular expression is used to match the file names in the directory-files call, allowing you to search for files that match any of the keys in your alist.
 
-** Create new lecture:
+** Creating a New Lecture
 #+begin_src elisp
 (defun org-lectures-create-new-lecture (&optional COURSE INSTITUTION)
   "Create a new file for COURSE of INSTITUTION.
@@ -610,7 +589,7 @@ automatically populated by 'A.U.Th' if left empty."
 			   (expand-file-name (concat "course_" COURSE) org-lectures-dir))))
     (let* ((id   (concat "lec-" COURSE "-"))
 	   (date (format-time-string "<%Y-%m-%d>"))
-	   (tags (string-join (seq-map (lambda (x) (cond ((stringp x) x) ((consp x) (car x)) (t nil))) org-lectures-default-tag-alist) " ")) 
+	   (tags (string-join (seq-map (lambda (x) (cond ((stringp x) x) ((consp x) (car x)) (t nil))) org-lectures-default-tag-alist) " "))
 	   (spec (format-spec-make ?i id ?d date ?c COURSE ?I INSTITUTION ?t tags))
 	   (payload (format-spec org-lectures-file-template spec t)))
       (write-region payload nil lecture-filename)
@@ -630,7 +609,7 @@ automatically populated by 'A.U.Th' if left empty."
 
 #+end_src
 
-** Get lecture institution
+** Retrieving Lecture Institution
 #+begin_src elisp
 (defun org-lectures-get-lecture-institution (course)
   "Return the proper institution for a course from the index."
@@ -643,7 +622,7 @@ automatically populated by 'A.U.Th' if left empty."
 
 #+end_src
 
-** Get course's info file
+** Retrieving Course Information File
 #+NAME: course info file
 #+begin_src elisp
 
@@ -651,12 +630,12 @@ automatically populated by 'A.U.Th' if left empty."
   "Return the filename of that course's info file"
   (let* ((lower-file (expand-file-name (concat "course_" (downcase course) ".org") org-lectures-dir ))
 	 (proper-file (expand-file-name (concat "course_" course ".org") org-lectures-dir )))
-  (if (file-exists-p lower-file) ; remnants of a shady past 
+  (if (file-exists-p lower-file) ; remnants of a shady past
       lower-file
     proper-file)))
 #+end_src
 
-** Set lecture's filename
+** Setting the Lecture Filename
 #+begin_src elisp
 (defun org-lectures--get-note-type ()
   "Interactively select a note type from `org-lectures-note-type-alist'."
@@ -696,7 +675,7 @@ TODO Add options:
 1. to automatically get rid of the tex files
 2. to automatically create a pdf folder
 3. to zip the created pdf folder for easy sharing
-   
+
 #+begin_src elisp
 (defun org-lectures-publish-course-to-pdf (course)
   "Export a list of Org files to LaTeX format, using xelatex as the compiler and including mytex.tex as an extra header.
@@ -710,7 +689,125 @@ COURSE: Is the short name for the relative course. "
     (with-current-buffer (find-file-noselect file)
       (org-latex-export-to-pdf))))
 #+end_src
-* Index Management
+
+
+** Continuous preview                                                                    :mode:minor:
+This package integrates a minor mode that, while not exclusive to ~org-lectures~,
+significantly enhances the writing experience.
+
+To ensure proper functionality and configuration:
+- The user may now run ~org-lectures-minor-mode~
+- When the minor mode starts,
+  - the file gets exported to latex, using the default ~ox-latex~ backend
+  - a hook gets added, locally to the buffer, to keep the ~tex~ file updated: this
+    is achieved by ~org-lectures-export-to-latex~ (a simple wrapper to the
+    backend) being run on save.
+  - a ~latexmk~ process gets started, continuously publishing the ~tex~ file to
+    ~pdf~. In the first execution (after the ~pdf~ first gets created) the default
+    ~pdf viewer~ will also open.
+
+#+NAME: Important Notice
+#+begin_note
+This package does not cover the configuration of ~ox-latex~. A properly configured
+~ox-latex~ is essential for optimal results.
+#+end_note
+
+#+NAME: Testing org-lecture-mode
+#+begin_src elisp
+(require 'ox-latex) ; Ensure the latex exporter is available
+
+(defun org-lectures-run-latexmk (file)
+  "Starts a continuous latexmk process for the given file."
+  (let* ((tex-file-name (concat (file-name-sans-extension file) ".tex"))
+	 (process-name (format "lecture-mk-%s" (file-name-nondirectory file)))
+         (output-buffer (get-buffer-create (format "*latexmk-%s*" (file-name-nondirectory file))))
+         ;; The command components
+         (program "latexmk")
+         (args (list "-pvc" "-interaction=nonstopmode" "-xelatex" "-shell-escape" tex-file-name)))
+
+    (message "Starting %s with PID %s" program process-name)
+
+    ;; Kill any existing process with the same name first
+    (let ((existing-proc (get-process process-name)))
+      (when existing-proc (kill-process existing-proc)))
+
+    ;; Start the new process asynchronously
+    (org-lectures-export-to-latex file)
+    (apply 'start-process process-name output-buffer program args)
+    ))
+
+
+(defun org-lectures-kill-latexmk (file)
+  "Kills the continuous latexmk process associated with the given file."
+  (let* ((process-name (format "lecture-mk-%s" (file-name-nondirectory file)))
+         (proc (get-process process-name)))
+    (when proc
+      (kill-process proc)
+      (message "Killed existing latexmk process: %s" process-name))))
+
+;; --- Setup and Teardown Functions (Revised) ---
+
+(defun org-lectures-setup ()
+  "Setup routine for org-lectures-minor-mode."
+  (interactive)
+  (let* ((file (buffer-file-name))
+	(ext (file-name-extension file)))
+    (cond
+     ((or (null file) (not (string-match "org" ext)))
+      (message "Error: Cannot activate org-lectures-minor-mode; buffer is not visiting an Org file.")
+      (setq org-lectures-minor-mode nil))
+     (t
+      ;; 1. Execute the actual latexmk command using start-process
+      (org-lectures-run-latexmk file)
+      (message "Org Lecture Mode: Asynchronous latexmk -pvc process started.")
+
+      ;; 2. Add the buffer-local write hook
+      (add-hook 'after-save-hook 'org-lectures-export-to-latex nil t)
+      (message "Org Lecture Mode Activated! Buffer-local write hook added.")))))
+
+(defun org-lectures-teardown ()
+  "Teardown routine for org-lectures-minor-mode."
+  (interactive)
+  ;; Kill the running latexmk process
+  (org-lectures-kill-latexmk (buffer-file-name))
+
+  ;; Remove the write hook
+  (remove-hook 'after-save-hook 'org-lectures-export-to-latex t)
+  (message "Org Lecture Mode Deactivated! Hook and latexmk process removed."))
+
+;; --- The Hook Function Remains the Same ---
+
+(defun org-lectures-export-to-latex (&optional file)
+  "Exports the current Org buffer to LaTeX."
+  (interactive)
+  (let* ((org-file (or file (buffer-file-name)))
+	 (tex-file (concat (file-name-sans-extension org-file) ".tex")))
+    (if org-file
+	(if org-lectures-minor-mode
+	    (progn
+	      (message "Org Lecture Mode: Exporting buffer %s to LaTeX..." org-file)
+	      (message "Org Lecture Mode: Will write to %s" tex-file)
+	      ;; Did not use async because it messed with messages
+	      (let* ((output-file (org-export-to-file 'latex  tex-file)))
+		(message "Org Lecture Mode: Exported to %s. latexmk will now recompile." output-file))
+	      )
+	  (message "Org Lecture Mode Inactive: Will not export"))
+      (error "File does not exist")
+      )))
+
+;; --- The Minor Mode Definition (Unchanged) ---
+
+(define-minor-mode org-lectures-minor-mode
+  "A minor mode for lecture notes that runs a shell command and exports to LaTeX on save."
+  :lighter " Lecture"
+  :keymap nil
+  (if org-lectures-minor-mode
+      (org-lectures-setup)
+    (org-lectures-teardown)))
+#+end_src
+
+
+** Index Management
 #+begin_src elisp
 (defun org-lectures--get-keyword-value-from-buffer (key)
   "Return the value(s) for KEY(s) from the current buffer's Org content.
@@ -787,9 +884,8 @@ The index data is cached in `org-lectures--course-cache`."
 #+end_src
 
 
-* Footer
+** Footer
 #+begin_src elisp
 (provide 'org-lectures)
 ;;; org-lectures.el ends here
 #+end_src
-
