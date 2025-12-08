@@ -127,7 +127,7 @@ it is not so hastily written. In any case, FIXME.
 #+FILETAGS: %t
 #+DATE: %d
 #+COURSE: %c
-#+INSTITUTION: %n
+#+INSTITUTION: %I
 "
   "Template for new lecture files.
 
@@ -371,10 +371,9 @@ automatically populated by 'A.U.Th' if left empty."
   (let ((COURSE (or COURSE ""))
 	(INSTITUTION (or INSTITUTION (org-lectures-get-lecture-institution COURSE)))
 	(lecture-filename (expand-file-name
-			   ;; This function also checks whether such a func exists
 			   (org-lectures-set-lectures-filename COURSE)
 			   (expand-file-name (concat "course_" COURSE) org-lectures-dir))))
-    (let* ((id   (concat "lec-" COURSE "-"))
+    (let* ((id   (concat "lec-" COURSE "-" (format-time-string "%Y%m%d%H%M%S")))
 	   (date (format-time-string "<%Y-%m-%d>"))
 	   (tags (string-join (seq-map (lambda (x) (cond ((stringp x) x) ((consp x) (car x)) (t nil))) org-lectures-default-tag-alist) " "))
 	   (spec (format-spec-make ?i id ?d date ?c COURSE ?I INSTITUTION ?t tags))

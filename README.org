@@ -239,7 +239,7 @@ it is not so hastily written. In any case, FIXME.
 ,#+FILETAGS: %t
 ,#+DATE: %d
 ,#+COURSE: %c
-,#+INSTITUTION: %n
+,#+INSTITUTION: %I
 "
   "Template for new lecture files.
 
@@ -547,24 +547,6 @@ If the subdirectory does not exist, it creates it."
 
 #+end_src
 
-#+RESULTS:
-: org-lectures-get-lecture-file-list
-
-**** Notes on the ~org-lectures-note-type-alist~ snippet:
-(mapcar #'cdr my-alist) is calling the mapcar function with two arguments: the cdr function and my-alist.
-
-my-alist is the alist that you defined earlier, which is a list of key-value pairs where each key is a string (e.g., "title1", "title2") and each value is a string (e.g., "key1", "key2").
-
-cdr is a built-in Emacs Lisp function that returns the "cdr" (i.e., the second element) of a cons cell. In this case, cdr is being used to extract the values (i.e., the keys) from my-alist.
-
-So, (mapcar #'cdr my-alist) applies cdr to each key-value pair in my-alist, returning a list of just the values (i.e., the keys).
-
-(regexp-opt ...) is calling the regexp-opt function with the list of keys returned by (mapcar #'cdr my-alist) as its argument.
-
-regexp-opt is a built-in Emacs Lisp function that takes a list of strings and returns a regular expression that matches any of the strings. It constructs a regular expression by concatenating the strings and using special characters to indicate alternatives and character sets. The result is a regular expression that can be used to match any of the original strings.
-
-So, (regexp-opt (mapcar #'cdr my-alist)) constructs a regular expression that matches any of the keys in my-alist. This regular expression is used to match the file names in the directory-files call, allowing you to search for files that match any of the keys in your alist.
-
 ** Creating a New Lecture
 #+begin_src elisp
 (defun org-lectures-create-new-lecture (&optional COURSE INSTITUTION)
@@ -583,10 +565,9 @@ automatically populated by 'A.U.Th' if left empty."
   (let ((COURSE (or COURSE ""))
 	(INSTITUTION (or INSTITUTION (org-lectures-get-lecture-institution COURSE)))
 	(lecture-filename (expand-file-name
-			   ;; This function also checks whether such a func exists
 			   (org-lectures-set-lectures-filename COURSE)
 			   (expand-file-name (concat "course_" COURSE) org-lectures-dir))))
-    (let* ((id   (concat "lec-" COURSE "-"))
+    (let* ((id   (concat "lec-" COURSE "-" (format-time-string "%Y%m%d%H%M%S")))
 	   (date (format-time-string "<%Y-%m-%d>"))
 	   (tags (string-join (seq-map (lambda (x) (cond ((stringp x) x) ((consp x) (car x)) (t nil))) org-lectures-default-tag-alist) " "))
 	   (spec (format-spec-make ?i id ?d date ?c COURSE ?I INSTITUTION ?t tags))
