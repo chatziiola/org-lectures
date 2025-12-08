@@ -240,6 +240,7 @@ it is not so hastily written. In any case, FIXME.
 ,#+DATE: %d
 ,#+COURSE: %c
 ,#+INSTITUTION: %I
+,#+PROFESSOR: %P
 "
   "Template for new lecture files.
 
@@ -247,7 +248,8 @@ Use `format-spec` codes:
   %i  -> ID (e.g., \"lec-<course>-\")
   %d  -> date (e.g., \"<2025-10-25>\")
   %c  -> course
-  %n  -> institution
+  %I  -> institution
+  %P  -> professor
   %t  -> filetags")
 #+end_src
 
@@ -257,6 +259,7 @@ Use `format-spec` codes:
 (defvar org-lectures-default-tag-alist '("lecture" "todo")
   "This variable is used when setting the FILETAGS parameter in new lecture files")
 #+end_src
+
 
 * Functions
 ** String Normalization
@@ -535,21 +538,18 @@ creating a new one. Gives the option to:
   "Return a list of lecture files in COURSE.
 
 If the subdirectory does not exist, it creates it."
-  (let* ((course-dir (expand-file-name
-		      (concat "course_" course) org-lectures-dir)))
-
+  (let* ((course-dir (org-lectures-get-course-lectures-dir course)))
     (unless (file-directory-p course-dir)
       (make-directory course-dir))
     (directory-files
      course-dir					;inside the course directory
      'full					; recursive
      (concat (regexp-opt (mapcar #'cdr org-lectures-note-type-alist)) "_" (upcase course) "_.*\.org"))))	;lecture filenames template
-
 #+end_src
 
 ** Creating a New Lecture
 #+begin_src elisp
-(defun org-lectures-create-new-lecture (&optional COURSE INSTITUTION)
+(defun org-lectures-create-new-lecture (&optional COURSE INSTITUTION PROFESSOR)
   "Create a new file for COURSE of INSTITUTION.
 
 Populate it according to `org-lectures-file-template'.
@@ -562,19 +562,21 @@ automatically populated when called through
 
 INSTITUTION: to be added in the lecture's '#+INSTITUTION' field,
 automatically populated by 'A.U.Th' if left empty."
-  (let ((COURSE (or COURSE ""))
-	(INSTITUTION (or INSTITUTION (org-lectures-get-lecture-institution COURSE)))
-	(lecture-filename (expand-file-name
-			   (org-lectures-set-lectures-filename COURSE)
-			   (expand-file-name (concat "course_" COURSE) org-lectures-dir))))
+  (let* ((COURSE (or COURSE ""))
+	 (course-data (cdr (assoc COURSE (org-lectures--get-index))))
+	 (INSTITUTION (or INSTITUTION (or (plist-get course-data :institution) org-lectures-default-institution)))
+	 (PROFESSOR (or PROFESSOR (or (plist-get course-data :professor) "")))
+	 (lecture-filename (expand-file-name
+			    (org-lectures-set-lectures-filename COURSE)
+			    (org-lectures-get-course-lectures-dir COURSE))))
     (let* ((id   (concat "lec-" COURSE "-" (format-time-string "%Y%m%d%H%M%S")))
 	   (date (format-time-string "<%Y-%m-%d>"))
 	   (tags (string-join (seq-map (lambda (x) (cond ((stringp x) x) ((consp x) (car x)) (t nil))) org-lectures-default-tag-alist) " "))
-	   (spec (format-spec-make ?i id ?d date ?c COURSE ?I INSTITUTION ?t tags))
+	   (spec (format-spec-make ?i id ?d date ?c COURSE ?I INSTITUTION ?P PROFESSOR ?t tags))
 	   (payload (format-spec org-lectures-file-template spec t)))
       (write-region payload nil lecture-filename)
       (let* ((new-lecture-entry `(,date . (:title "Διάλεξη:"
-                                           :file ,lecture-filename))))
+						  :file ,lecture-filename))))
         (org-lectures--get-index)
         (let ((course-in-cache (assoc COURSE org-lectures--course-cache)))
           (when course-in-cache
@@ -582,23 +584,11 @@ automatically populated by 'A.U.Th' if left empty."
                   (cons new-lecture-entry (plist-get (cdr course-in-cache) :lectures)))))
         (org-lectures--write-index-to-file)
 
-    (if org-lectures-append-to-inbox
-	(write-region (concat "\n* ACTION \[\[" lecture-filename "\]\]\n") nil (expand-file-name "inbox.org" org-directory) t))
+	;; TODO change this to a hook
+	(if org-lectures-append-to-inbox
+	    (write-region (concat "\n* ACTION \[\[" lecture-filename "\]\]\n") nil (expand-file-name "inbox.org" org-directory) t))
 
-    (org-open-file lecture-filename)))))
-
-#+end_src
-
-** Retrieving Lecture Institution
-#+begin_src elisp
-(defun org-lectures-get-lecture-institution (course)
-  "Return the proper institution for a course from the index."
-  (if (string-blank-p course)
-      org-lectures-default-institution
-    (let* ((index (org-lectures--get-index))
-           (course-data (cdr (assoc course index))))
-      (or (plist-get course-data :institution)
-          org-lectures-default-institution))))
+	(org-open-file lecture-filename)))))
 
 #+end_src
 
@@ -635,13 +625,18 @@ automatically populated by 'A.U.Th' if left empty."
           (format-time-string "%H%M%S" (current-time))
         (org-lectures-sluggify user-input)))))
 
+(defun org-lectures-get-course-lectures-dir (course)
+  "Return the directory in which lectures for `course' reside"
+  (expand-file-name (concat "course_" course) org-lectures-dir))
+
 (defun org-lectures-set-lectures-filename (course)
   "Return a unique lecture filename using the format:
 `notetype_COURSE_DATE[_SUFFIX].org'."
   (let* ((note-type (org-lectures--get-note-type))
          (date-str (format-time-string "%Y%m%d" (current-time)))
          (base-filename (format "%s_%s_%s.org" note-type course date-str))
-         (course-dir (expand-file-name (concat "course_" course) org-lectures-dir))
+         (course-dir (org-lectures-get-course-lectures-dir course))
+	 ;; Check for duplicate file
          (suffix (when (file-exists-p (expand-file-name base-filename course-dir))
                    (org-lectures--get-collision-suffix))))
     (if suffix
@@ -815,7 +810,7 @@ This function reads files into temporary buffers and does not leave them open."
                (course-prof (org-lectures--get-keyword-value-from-buffer "PROFESSOR"))
                (course-inst (org-lectures--get-keyword-value-from-buffer "INSTITUTION")))
           (when course-id
-            (let* ((course-lecture-dir (expand-file-name (concat "course_" course-id) org-lectures-dir))
+	    (let* ((course-lecture-dir (org-lectures-get-course-lectures-dir course-id))
                    (lecture-files (when (file-directory-p course-lecture-dir)
                                     (directory-files course-lecture-dir t (concat (regexp-opt (mapcar #'cdr org-lectures-note-type-alist)) "_" course-id "_.*\\.org$"))))
                    (lecture-data '()))
