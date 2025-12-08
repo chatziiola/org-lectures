@@ -355,6 +355,10 @@ If the subdirectory does not exist, it creates it."
      'full					; recursive
      (concat (regexp-opt (mapcar #'cdr org-lectures-note-type-alist)) "_" (upcase course) "_.*\.org"))))	;lecture filenames template
 
+(defun org-lectures-generate-lecture-id (COURSE)
+  "Generate a unique id for a new lecture. More parameters might be added in the future"
+    (concat "lec-" COURSE "-" (format-time-string "%Y%m%d%H%M%S")))
+
 (defun org-lectures-create-new-lecture (&optional COURSE INSTITUTION PROFESSOR)
   "Create a new file for COURSE of INSTITUTION.
 
@@ -368,6 +372,9 @@ automatically populated when called through
 
 INSTITUTION: to be added in the lecture's '#+INSTITUTION' field,
 automatically populated by 'A.U.Th' if left empty."
+  ;; Coding convention:
+  ;; - UPPERCASE variables are for "course-wide" attributes
+  ;; - lowercase variables are reserved for "lecture-specific" ones
   (let* ((COURSE (or COURSE ""))
 	 (course-data (cdr (assoc COURSE (org-lectures--get-index))))
 	 (INSTITUTION (or INSTITUTION (or (plist-get course-data :institution) org-lectures-default-institution)))
@@ -375,7 +382,7 @@ automatically populated by 'A.U.Th' if left empty."
 	 (lecture-filename (expand-file-name
 			    (org-lectures-set-lectures-filename COURSE)
 			    (org-lectures-get-course-lectures-dir COURSE))))
-    (let* ((id   (concat "lec-" COURSE "-" (format-time-string "%Y%m%d%H%M%S")))
+    (let* ((id   (org-lectures-generate-lecture-id COURSE))
 	   (date (format-time-string "<%Y-%m-%d>"))
 	   (tags (string-join (seq-map (lambda (x) (cond ((stringp x) x) ((consp x) (car x)) (t nil))) org-lectures-default-tag-alist) " "))
 	   (spec (format-spec-make ?i id ?d date ?c COURSE ?I INSTITUTION ?P PROFESSOR ?t tags))
