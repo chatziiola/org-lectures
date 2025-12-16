@@ -1,5 +1,6 @@
 #+TITLE:  Org-Lectures
 #+PROPERTY: header-args :tangle (let ((org-use-tag-inheritance t)) (if (member "INACTIVE" (org-get-tags))  "no" "org-lectures.el"))
+#+auto_tangle: t
 
 * Core Features
 Org-Lectures provides a structured and automated system for taking and organizing
@@ -153,13 +154,13 @@ Let's dive into the code
 ;;; Code:
 
 (require 'org)
+(require 'org-lectures-index)
 
 #+end_src
 
 * Available variables
-Lectures are to be stored within my org-roam ~uni~ directory
+For those wishing to customize their installation:
 
-Parameters: *ONLY THIS TO BE CHANGED BETWEEN INSTALLATIONS*
 #+begin_src elisp
 (defvar org-lectures-dir (expand-file-name "~/org/lectures")
  "Lecture and course files directory.
@@ -246,12 +247,6 @@ it is not so hastily written. In any case, FIXME.
 #+RESULTS:
 : org-lectures-lecture-data-alist
 
-<2025-10-27 Mon>: New parameter: Course Cache
-#+begin_src elisp
-(defvar org-lectures--course-cache nil
-  "Cache for the course index data loaded from the index file.")
-#+end_src
-
 <2025-10-25 Sat>: New parameter: Lecture file template
 #+NAME: org-lecture-file-template
 #+begin_src elisp
@@ -287,6 +282,10 @@ Use `format-spec` codes:
   "Hook run after creating a new course.
 The course ID is passed as an argument.")
 
+(defvar org-lectures-after-open-course-hook nil
+  "Hook run after opening an existing course file.
+The filename of the course is passed as an argument.")
+
 (defvar org-lectures-after-create-lecture-hook nil
   "Hook run after creating a new lecture.
 The filename of the new lecture is passed as an argument.")
@@ -312,46 +311,6 @@ It has only one argument, INPUTSTRING, which is self-described"
            (s (replace-regexp-in-string "[^[:alnum:][:space:]-]" "" s))
            (s (replace-regexp-in-string "[[:space:]]+" "-" s)))
       (replace-regexp-in-string "^-\\|-$" "" s)))
-#+end_src
-
-** Get-keyword-value
-Functions to extract the values of keywords set up like the following at the top
-of org-mode documents
-#+begin_example
-#+COURSE:  18.06
-#+PROFESSOR: Gilbert Strang
-#+end_example
-
-This function and the next (even though that one has been slightly modified)
-were found in [[https://stackoverflow.com/questions/66574715/how-to-get-org-mode-file-title-and-other-file-level-properties-from-an-arbitra][StackOverflow]].
-
-#+begin_src elisp
-(defun ndk/get-keyword-key-value (kwd)
-  "Only to be used by `org-lectures-get-keyword-value'.
-
-Allows for the extraction of KWD from the current buffer.
-Works only for buffers using the Org-Mode syntax."
-  (let ((data (cadr kwd)))
-    (list (plist-get data :key)
-          (plist-get data :value))))
-
-#+end_src
-
-
-This function is the main function used to take advantage of the syntax shown in
-the example above.
-#+begin_src elisp
-(defun org-lectures-get-keyword-value (key &optional file)
-  "Return the value for KEY in an Org buffer.
-If FILE is given, find that file and check there. Otherwise, use
-the current buffer.
-If KEY is a list, return a list of corresponding values."
-  (if file
-      (with-temp-buffer
-        (insert-file-contents file)
-        (org-lectures--get-keyword-value-from-buffer key))
-    (org-lectures--get-keyword-value-from-buffer key)))
-
 #+end_src
 
 Note on performance:
@@ -409,11 +368,19 @@ Select course from course prompt
 #+end_src
 
 ** Retrieving the Course List
+#+begin_src elisp
+(defun org-lectures--configure-index-module ()
+  "Ensure the index module is configured using the main module's variables."
+  (setq org-lectures-index-dir org-lectures-dir)
+  (setq org-lectures-index-note-type-alist org-lectures-note-type-alist))
+#+end_src
+
 Get list of courses
 #+begin_src elisp
 (defun org-lectures-get-course-list ()
   "Return a list of course property lists from the index."
-  (let ((index (org-lectures--get-index)))
+  (org-lectures--configure-index-module)
+  (let ((index (org-lectures-index-get)))
     (mapcar (lambda (course-entry)
               (let* ((course-id (car course-entry))
                      (props (cdr course-entry)))
@@ -461,10 +428,11 @@ the course's default properties all set up."
                                             :institution ,org-lectures-default-institution
                                             :file ,course-org-file
                                             :lectures '()))))
-                  (org-lectures--get-index)
-                  (push new-course-entry org-lectures--course-cache)
-                  (org-lectures--write-index-to-file)
-                  (run-hooks 'org-lectures-after-create-course-hook (upcase course))))
+                  (org-lectures--configure-index-module)
+                  (org-lectures-index-get)
+                  (push new-course-entry org-lectures-index--cache)
+                  (org-lectures-index-write)
+                  (run-hook-with-args 'org-lectures-after-create-course-hook (upcase course))))
            (t
             (error "Invalid Course Name. Short title must be less than 5 characters long")))))
 
@@ -479,7 +447,7 @@ the course's default properties all set up."
 Works only if inside an org file with the 'COURSE' property, or
 when called by `org-lectures-open-course'"
   (interactive)
-  (let* ((course (or course (org-lectures-get-keyword-value "COURSE"))))
+  (let* ((course (or course (org-lectures-index-get-keyword-value "COURSE"))))
     (unless (symbolp course)
       (message (concat "Course " course " folder opened"))
       (shell-command (concat "open " org-lectures-static-course-files-dir "course_" course)))))
@@ -491,7 +459,7 @@ Works only if inside an org file with the 'COURSE' property, or
 when called by `org-lectures-open-course'"
   (interactive)
   (message "org-lectures-dired-course-folder Function will be deprecated in later version")
-  (let* ((course (or course (org-lectures-get-keyword-value "COURSE"))))
+  (let* ((course (or course (org-lectures-index-get-keyword-value "COURSE"))))
     (unless (symbolp course)
       (message (concat "Course " course " folder opened")))
     (dired (concat org-lectures-static-course-files-dir "course_" course))))
@@ -522,10 +490,12 @@ creating a new one. Gives the option to:
 	 ((string-equal lecture-answer "OF")
 	  (org-lectures-dired-course-folder course))
 	 ((string-equal lecture-answer "INFO")
-	  (org-open-file (org-lectures-get-course-info-file course))))
+	  (let ((course-file (org-lectures-get-course-info-file course)))
+	    (org-open-file course-file)
+	    (run-hook-with-args 'org-lectures-after-open-course-hook course-file))))
       (let ((lecture-file (car (last lecture-answer))))
         (org-open-file lecture-file)
-        (run-hooks 'org-lectures-after-open-lecture-hook lecture-file)))))
+        (run-hook-with-args 'org-lectures-after-open-lecture-hook lecture-file)))))
 
 #+end_src
 
@@ -535,7 +505,7 @@ creating a new one. Gives the option to:
   "Open a COURSE lecture for viewing or create a new one."
   (let* ((course-lectures
           (mapcar (lambda (file)
-                    (cons course (append (org-lectures-get-keyword-value org-lectures-lecture-data-alist file)
+                    (cons course (append (org-lectures-index-get-keyword-value org-lectures-lecture-data-alist file)
                                          (list file))))
                   (org-lectures-get-lecture-file-list course))))
     (if (not course-lectures)
@@ -613,7 +583,7 @@ automatically populated by 'A.U.Th' if left empty."
   ;; - UPPERCASE variables are for "course-wide" attributes
   ;; - lowercase variables are reserved for "lecture-specific" ones
   (let* ((COURSE (or COURSE ""))
-	 (course-data (cdr (assoc COURSE (org-lectures--get-index))))
+	 (course-data (cdr (assoc COURSE (org-lectures-index-get))))
 	 (INSTITUTION (or INSTITUTION (or (plist-get course-data :institution) org-lectures-default-institution)))
 	 (PROFESSOR (or PROFESSOR (or (plist-get course-data :professor) "")))
 	 (lecture-filename (expand-file-name
@@ -627,14 +597,15 @@ automatically populated by 'A.U.Th' if left empty."
       (write-region payload nil lecture-filename)
       (let* ((new-lecture-entry `(,date . (:title "Διάλεξη:"
 						  :file ,lecture-filename))))
-        (org-lectures--get-index)
-        (let ((course-in-cache (assoc COURSE org-lectures--course-cache)))
+        (org-lectures--configure-index-module)
+        (org-lectures-index-get)
+        (let ((course-in-cache (assoc COURSE org-lectures-index--cache)))
           (when course-in-cache
             (setf (plist-get (cdr course-in-cache) :lectures)
                   (cons new-lecture-entry (plist-get (cdr course-in-cache) :lectures)))))
-        (org-lectures--write-index-to-file)
+        (org-lectures-index-write)
 
-	(run-hooks 'org-lectures-after-create-lecture-hook lecture-filename)
+	(run-hook-with-args 'org-lectures-after-create-lecture-hook lecture-filename)
 
 	(org-open-file lecture-filename)))))
 
@@ -830,9 +801,90 @@ This package does not cover the configuration of ~ox-latex~. A properly configur
 #+end_src
 
 
-** Index Management
+** Automatic Indexing on Save
+
+This feature adds a buffer-local hook to course files. When a course file is
+saved, the index is automatically rebuilt, ensuring that course information is
+always up-to-date.
+
 #+begin_src elisp
-(defun org-lectures--get-keyword-value-from-buffer (key)
+(defun org-lectures--auto-rebuild-index-on-save ()
+  "Rebuild the org-lectures index for the current buffer."
+  (message "Org-Lectures: Course file saved, rebuilding index...")
+  (org-lectures--configure-index-module)
+  (org-lectures-index-rebuild))
+
+(defun org-lectures--add-course-save-hook (filename)
+  "Add a buffer-local after-save-hook to rebuild the index.
+Argument FILENAME is ignored."
+  (ignore filename)
+  (add-hook 'after-save-hook #'org-lectures--auto-rebuild-index-on-save nil t))
+
+(add-hook 'org-lectures-after-open-course-hook #'org-lectures--add-course-save-hook)
+#+end_src
+
+** Footer
+#+begin_src elisp
+(provide 'org-lectures)
+;;; org-lectures.el ends here
+#+end_src
+
+
+* Indexing
+:PROPERTIES:
+:header-args:elisp: :tangle "org-lectures-index.el"
+:END:
+
+This module handles the discovery, parsing, and caching of course and lecture
+data from Org files. It is designed to be a self-contained unit that can be
+configured and used by other parts of the ~org-lectures~ package.
+
+** Interface
+This module provides the following functions for other modules to use:
+- ~org-lectures-index-get~: Retrieves the full, cached index of all courses.
+- ~org-lectures-index-write~: Manually triggers a write of the in-memory cache to the file.
+- ~org-lectures-index-rebuild~: Forces a full rebuild of the index from the source files.
+- ~org-lectures-index-get-keyword-value~: A utility to get keyword values from any Org file.
+
+#+begin_src elisp
+;;; org-lectures-index.el --- Indexing for org-lectures -*- lexical-binding: t -*-
+
+;;; Commentary:
+;; Indexing and caching functionality for org-lectures.
+
+;;; Code:
+
+(require 'org-element)
+#+end_src
+
+** Variables
+These variables configure the behavior of the indexer.
+
+#+begin_src elisp
+(defvar org-lectures-index-dir nil
+  "The root directory for the lecture files to be indexed.")
+
+(defvar org-lectures-index-note-type-alist '(("lecture" . "lec"))
+  "Alist of note types to search for during indexing.")
+
+(defvar org-lectures-index--cache nil
+  "Cache for the course index data loaded from the index file.")
+#+end_src
+
+** Keyword Retrieval
+Functions related to parsing and retrieving ~#+KEYWORD:~ values from Org files.
+
+#+begin_src elisp
+(defun ndk/get-keyword-key-value (kwd)
+  "Only to be used by `org-lectures-get-keyword-value'.
+
+Allows for the extraction of KWD from the current buffer.
+Works only for buffers using the Org-Mode syntax."
+  (let ((data (cadr kwd)))
+    (list (plist-get data :key)
+          (plist-get data :value))))
+
+(defun org-lectures-index--get-keyword-value-from-buffer (key)
   "Return the value(s) for KEY(s) from the current buffer's Org content.
 If KEY is a list, return a list of corresponding values."
   (let ((keyword-map (org-element-map (org-element-parse-buffer 'greater-element)
@@ -841,32 +893,52 @@ If KEY is a list, return a list of corresponding values."
         (mapcar (lambda (k) (cadr (assoc k keyword-map))) key)
       (cadr (assoc key keyword-map)))))
 
-(defun org-lectures-rebuild-index ()
+(defun org-lectures-index-get-keyword-value (key &optional file)
+  "Return the value for KEY in an Org buffer.
+If FILE is given, find that file and check there. Otherwise, use
+the current buffer.
+If KEY is a list, return a list of corresponding values."
+  (if file
+      (with-temp-buffer
+        (insert-file-contents file)
+        (org-lectures-index--get-keyword-value-from-buffer key))
+    (org-lectures-index--get-keyword-value-from-buffer key)))
+#+end_src
+
+** Index Management
+Core functions for building and managing the index cache.
+
+#+begin_src elisp
+(defun org-lectures-index--get-course-lectures-dir (course)
+  "Return the directory in which lectures for `course' reside"
+  (expand-file-name (concat "course_" course) org-lectures-index-dir))
+
+(defun org-lectures-index-rebuild ()
   "Scan all course and lecture files and rebuild the index.
-The index is stored in `.org-lectures-index.el` in `org-lectures-dir`.
+The index is stored in `.org-lectures-index.el` in `org-lectures-index-dir`.
 This function reads files into temporary buffers and does not leave them open."
   (interactive)
-  (let ((index-file (expand-file-name ".org-lectures-index.el" org-lectures-dir))
-        (course-files (directory-files org-lectures-dir t "course_.*\\.org$"))
+  (let ((index-file (expand-file-name ".org-lectures-index.el" org-lectures-index-dir))
+        (course-files (directory-files org-lectures-index-dir t "course_.*\\.org$"))
         (index-data '()))
 
     (dolist (course-file course-files)
       (with-temp-buffer
         (insert-file-contents course-file)
-        (let* ((course-id (org-lectures--get-keyword-value-from-buffer "COURSE"))
-               (course-title (org-lectures--get-keyword-value-from-buffer "TITLE"))
-               (course-prof (org-lectures--get-keyword-value-from-buffer "PROFESSOR"))
-               (course-inst (org-lectures--get-keyword-value-from-buffer "INSTITUTION")))
+        (let* ((course-id (org-lectures-index--get-keyword-value-from-buffer "COURSE"))
+               (course-title (org-lectures-index--get-keyword-value-from-buffer "TITLE"))
+               (course-prof (org-lectures-index--get-keyword-value-from-buffer "PROFESSOR"))
+               (course-inst (org-lectures-index--get-keyword-value-from-buffer "INSTITUTION")))
           (when course-id
-	    (let* ((course-lecture-dir (org-lectures-get-course-lectures-dir course-id))
+	    (let* ((course-lecture-dir (org-lectures-index--get-course-lectures-dir course-id))
                    (lecture-files (when (file-directory-p course-lecture-dir)
-                                    (directory-files course-lecture-dir t (concat (regexp-opt (mapcar #'cdr org-lectures-note-type-alist)) "_" course-id "_.*\\.org$"))))
+                                    (directory-files course-lecture-dir t (concat (regexp-opt (mapcar #'cdr org-lectures-index-note-type-alist)) "_" course-id "_.*\\.org$"))))
                    (lecture-data '()))
               (dolist (lecture-file lecture-files)
                 (with-temp-buffer
                   (insert-file-contents lecture-file)
-                  (let* ((lecture-title (org-lectures--get-keyword-value-from-buffer "TITLE"))
-                         (lecture-date (org-lectures--get-keyword-value-from-buffer "DATE")))
+                  (let* ((lecture-title (org-lectures-index--get-keyword-value-from-buffer "TITLE"))
+                         (lecture-date (org-lectures-index--get-keyword-value-from-buffer "DATE")))
                     (when lecture-date
                       (push `(,lecture-date . (:title ,lecture-title
                                               :file ,lecture-file))
@@ -882,38 +954,30 @@ This function reads files into temporary buffers and does not leave them open."
       (require 'pp)
       (pp index-data (current-buffer))
       (write-file index-file))
-    (message "org-lectures index rebuilt.")))
+    (message "org-lectures-index rebuilt.")))
 
-(defun org-lectures--get-index ()
+(defun org-lectures-index-get ()
   "Load and return the course index.
 If the index file does not exist or is stale, it is rebuilt.
-The index data is cached in `org-lectures--course-cache`."
-  (let ((index-file (expand-file-name ".org-lectures-index.el" org-lectures-dir)))
+The index data is cached in `org-lectures-index--cache`."
+  (let ((index-file (expand-file-name ".org-lectures-index.el" org-lectures-index-dir)))
     (when (or (not (file-exists-p index-file))
-              (file-newer-than-file-p org-lectures-dir index-file))
-      (org-lectures-rebuild-index))
-    (or org-lectures--course-cache
+              (file-newer-than-file-p org-lectures-index-dir index-file))
+      (org-lectures-index-rebuild))
+    (or org-lectures-index--cache
         (with-temp-buffer
           (insert-file-contents index-file)
-          (setq org-lectures--course-cache (read (current-buffer)))))))
+          (setq org-lectures-index--cache (read (current-buffer)))))))
 
-(defun org-lectures--write-index-to-file ()
+(defun org-lectures-index-write ()
   "Write the current in-memory course cache to the index file."
-  (let ((index-file (expand-file-name ".org-lectures-index.el" org-lectures-dir)))
+  (let ((index-file (expand-file-name ".org-lectures-index.el" org-lectures-index-dir)))
     (with-temp-buffer
       (require 'pp)
-      (pp org-lectures--course-cache (current-buffer))
+      (pp org-lectures-index--cache (current-buffer))
       (write-file index-file))))
 #+end_src
 
-
-** Footer
 #+begin_src elisp
-(provide 'org-lectures)
-;;; org-lectures.el ends here
+(provide 'org-lectures-index)
 #+end_src
-
-* Indexing
-:PROPERTIES:
-:header-args:elisp: :tangle "org-lectures-index.el"
-:END:
