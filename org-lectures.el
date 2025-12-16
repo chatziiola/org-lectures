@@ -143,6 +143,18 @@ Use `format-spec` codes:
 (defvar org-lectures-default-tag-alist '("lecture" "todo")
   "This variable is used when setting the FILETAGS parameter in new lecture files")
 
+(defvar org-lectures-after-create-course-hook nil
+  "Hook run after creating a new course.
+The course ID is passed as an argument.")
+
+(defvar org-lectures-after-create-lecture-hook nil
+  "Hook run after creating a new lecture.
+The filename of the new lecture is passed as an argument.")
+
+(defvar org-lectures-after-open-lecture-hook nil
+  "Hook run after opening an existing lecture.
+The filename of the lecture is passed as an argument.")
+
 (defun org-lectures-sluggify (s)
   "Given a string return it's /sluggified/ version.
 It has only one argument, INPUTSTRING, which is self-described"
@@ -258,7 +270,8 @@ the course's default properties all set up."
                                             :lectures '()))))
                   (org-lectures--get-index)
                   (push new-course-entry org-lectures--course-cache)
-                  (org-lectures--write-index-to-file)))
+                  (org-lectures--write-index-to-file)
+                  (run-hooks 'org-lectures-after-create-course-hook (upcase course))))
            (t
             (error "Invalid Course Name. Short title must be less than 5 characters long")))))
 
@@ -304,7 +317,9 @@ creating a new one. Gives the option to:
 	  (org-lectures-dired-course-folder course))
 	 ((string-equal lecture-answer "INFO")
 	  (org-open-file (org-lectures-get-course-info-file course))))
-      (org-open-file (car (last lecture-answer))))))
+      (let ((lecture-file (car (last lecture-answer))))
+        (org-open-file lecture-file)
+        (run-hooks 'org-lectures-after-open-lecture-hook lecture-file)))))
 
 (defun org-lectures-select-lecture-from-course (course &optional publish)
   "Open a COURSE lecture for viewing or create a new one."
@@ -397,9 +412,7 @@ automatically populated by 'A.U.Th' if left empty."
                   (cons new-lecture-entry (plist-get (cdr course-in-cache) :lectures)))))
         (org-lectures--write-index-to-file)
 
-	;; TODO change this to a hook
-	(if org-lectures-append-to-inbox
-	    (write-region (concat "\n* ACTION \[\[" lecture-filename "\]\]\n") nil (expand-file-name "inbox.org" org-directory) t))
+	(run-hooks 'org-lectures-after-create-lecture-hook lecture-filename)
 
 	(org-open-file lecture-filename)))))
 

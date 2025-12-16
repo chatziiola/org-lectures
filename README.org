@@ -1,6 +1,26 @@
 #+TITLE:  Org-Lectures
 #+PROPERTY: header-args :tangle (let ((org-use-tag-inheritance t)) (if (member "INACTIVE" (org-get-tags))  "no" "org-lectures.el"))
 
+* Core Features
+Org-Lectures provides a structured and automated system for taking and organizing
+lecture notes in Org mode. It streamlines the entire workflow, from creating new
+notes to finding old ones, letting you focus on the content.
+
+- *Effortless Organization*: Automatically manages your notes in a clear
+  ~course -> lecture~ hierarchy. Create new courses and lectures on the fly.
+
+- *Rapid Navigation*: Interactively search and select courses and lectures
+  through a dynamic, aligned minibuffer prompt. An efficient indexing system
+  makes access nearly instantaneous.
+
+- *Smart Templates*: New lecture files are automatically populated with relevant
+  course data (Professor, Institution, etc.) from a customizable template.
+
+- *Live LaTeX Preview*: Activate a minor mode to get a live-updating PDF of
+  your notes. On every save, the Org file is exported to LaTeX and recompiled
+  automatically in the background.
+
+* Introduction
 I always liked [[https://castel.dev][Gilles]]'s note-taking setup, even though it was not "the right
 tool" for me. Working in org not only feels more intuitive but allows me to be
 *way* more flexible - I can always publish my lectures in multiple forms, without
@@ -31,6 +51,10 @@ extensive documentation by the end of the week.
   (setq org-lectures-dir (expand-file-name "/your/path"))
   (setq org-lectures-static-course-files-dir  "/your/path")
   (setq org-lectures-roam-id-integration  t)
+  (add-hook 'org-lectures-after-open-lecture-hook
+	    (lambda (filename)
+	      (ignore filename)
+	      (org-lectures-minor-mode 1)))
   :general
   (lc/leader-keys
     "ll" '(org-lectures-find-course		:which-keys "lecture")
@@ -258,6 +282,18 @@ Use `format-spec` codes:
 #+begin_src elisp
 (defvar org-lectures-default-tag-alist '("lecture" "todo")
   "This variable is used when setting the FILETAGS parameter in new lecture files")
+
+(defvar org-lectures-after-create-course-hook nil
+  "Hook run after creating a new course.
+The course ID is passed as an argument.")
+
+(defvar org-lectures-after-create-lecture-hook nil
+  "Hook run after creating a new lecture.
+The filename of the new lecture is passed as an argument.")
+
+(defvar org-lectures-after-open-lecture-hook nil
+  "Hook run after opening an existing lecture.
+The filename of the lecture is passed as an argument.")
 #+end_src
 
 
@@ -427,7 +463,8 @@ the course's default properties all set up."
                                             :lectures '()))))
                   (org-lectures--get-index)
                   (push new-course-entry org-lectures--course-cache)
-                  (org-lectures--write-index-to-file)))
+                  (org-lectures--write-index-to-file)
+                  (run-hooks 'org-lectures-after-create-course-hook (upcase course))))
            (t
             (error "Invalid Course Name. Short title must be less than 5 characters long")))))
 
@@ -486,7 +523,9 @@ creating a new one. Gives the option to:
 	  (org-lectures-dired-course-folder course))
 	 ((string-equal lecture-answer "INFO")
 	  (org-open-file (org-lectures-get-course-info-file course))))
-      (org-open-file (car (last lecture-answer))))))
+      (let ((lecture-file (car (last lecture-answer))))
+        (org-open-file lecture-file)
+        (run-hooks 'org-lectures-after-open-lecture-hook lecture-file)))))
 
 #+end_src
 
@@ -595,9 +634,7 @@ automatically populated by 'A.U.Th' if left empty."
                   (cons new-lecture-entry (plist-get (cdr course-in-cache) :lectures)))))
         (org-lectures--write-index-to-file)
 
-	;; TODO change this to a hook
-	(if org-lectures-append-to-inbox
-	    (write-region (concat "\n* ACTION \[\[" lecture-filename "\]\]\n") nil (expand-file-name "inbox.org" org-directory) t))
+	(run-hooks 'org-lectures-after-create-lecture-hook lecture-filename)
 
 	(org-open-file lecture-filename)))))
 
@@ -875,3 +912,8 @@ The index data is cached in `org-lectures--course-cache`."
 (provide 'org-lectures)
 ;;; org-lectures.el ends here
 #+end_src
+
+* Indexing
+:PROPERTIES:
+:header-args:elisp: :tangle "org-lectures-index.el"
+:END:
