@@ -6,6 +6,7 @@
 ;;; Code:
 
 (require 'org-element)
+(require 'seq)
 
 (defvar org-lectures-index-dir nil
   "The root directory for the lecture files to be indexed.")
@@ -45,6 +46,33 @@ If KEY is a list, return a list of corresponding values."
         (org-lectures-index--get-keyword-value-from-buffer key))
     (org-lectures-index--get-keyword-value-from-buffer key)))
 
+;;; Compatibility for older Emacs versions
+(unless (fboundp 'directory-files-recursively)
+  (defun directory-files-recursively (dir &optional regexp)
+    "Return a list of files in DIR and its subdirectories matching REGEXP.
+This is a fallback for Emacs versions older than 27."
+    (let (files)
+      (dolist (entry (directory-files dir t))
+        (cond
+         ((file-directory-p entry)
+          (unless (member (file-name-nondirectory entry) '("." ".."))
+            (setq files (nconc files (directory-files-recursively entry regexp)))))
+         ((or (null regexp) (string-match-p regexp entry))
+          (push entry files))))
+      files)))
+
+(defun org-lectures-index--is-stale-p (index-file)
+  "Return t if INDEX-FILE is stale.
+The index is considered stale if it doesn't exist, or if any .org
+file in `org-lectures-index-dir' is newer than the index file."
+  (or (not (file-exists-p index-file))
+      (let ((org-files (directory-files-recursively org-lectures-index-dir "\\.org$")))
+        (catch 'stale-check
+          (dolist (file org-files)
+            (when (file-newer-than-file-p file index-file)
+              (throw 'stale-check t)))
+          nil)))) ;; If loop finishes, no stale file found
+
 (defun org-lectures-index--get-course-lectures-dir (course)
   "Return the directory in which lectures for `course' reside"
   (expand-file-name (concat "course_" course) org-lectures-index-dir))
@@ -77,18 +105,20 @@ This function reads files into temporary buffers and does not leave them open."
                          (lecture-date (org-lectures-index--get-keyword-value-from-buffer "DATE")))
                     (when lecture-date
                       (push `(,lecture-date . (:title ,lecture-title
-                                              :file ,lecture-file))
+						      :file ,lecture-file))
                             lecture-data)))))
               (push `(,course-id . (:title ,course-title
-                                    :professor ,course-prof
-                                    :institution ,course-inst
-                                    :file ,course-file
-                                    :lectures ,lecture-data))
+					   :professor ,course-prof
+					   :institution ,course-inst
+					   :file ,course-file
+					   :lectures ,lecture-data))
                     index-data))))))
 
+    ;; Update the cache and write the new index to file.
+    (setq org-lectures-index--cache (nreverse index-data))
     (with-temp-buffer
       (require 'pp)
-      (pp index-data (current-buffer))
+      (pp org-lectures-index--cache (current-buffer))
       (write-file index-file))
     (message "org-lectures-index rebuilt.")))
 
@@ -97,8 +127,7 @@ This function reads files into temporary buffers and does not leave them open."
 If the index file does not exist or is stale, it is rebuilt.
 The index data is cached in `org-lectures-index--cache`."
   (let ((index-file (expand-file-name ".org-lectures-index.el" org-lectures-index-dir)))
-    (when (or (not (file-exists-p index-file))
-              (file-newer-than-file-p org-lectures-index-dir index-file))
+    (when (org-lectures-index--is-stale-p index-file)
       (org-lectures-index-rebuild))
     (or org-lectures-index--cache
         (with-temp-buffer
