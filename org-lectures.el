@@ -121,7 +121,7 @@ it is not so hastily written. In any case, FIXME.
   ":PROPERTIES:
 :ID: %i
 :END:
-#+TITLE: Διάλεξη:
+#+TITLE: %T
 #+FILETAGS: %t
 #+DATE: %d
 #+COURSE: %c
@@ -136,14 +136,15 @@ Use `format-spec` codes:
   %c  -> course
   %I  -> institution
   %P  -> professor
-  %t  -> filetags")
+  %t  -> filetags
+  %T  -> title")
 
 (defvar org-lectures-course-file-template
   ":PROPERTIES:
 :ID: %i
 :END:
-#+TITLE:
-#+PROFESSOR:
+#+TITLE: %T
+#+PROFESSOR: %P
 #+INSTITUTION: %I
 #+SEMESTER: %s
 #+FILETAGS: course
@@ -155,7 +156,9 @@ Use `format-spec` codes:
   %i  -> ID (e.g., \"<course>-course\")
   %c  -> course
   %I  -> institution
-  %s  -> semester")
+  %s  -> semester
+  %T  -> title
+  %P  -> professor")
 
 (defvar org-lectures-default-tag-alist '("lecture" "todo")
   "This variable is used when setting the FILETAGS parameter in new lecture files")
@@ -178,6 +181,11 @@ The filename of the lecture is passed as an argument.")
 
 (defun org-lectures-sluggify (s)
   "Given a string return it's /sluggified/ version.
+
+Essentially it is:
+- all lowercase letters and '-' instead of spaces
+- thus: no spaces or special characters
+
 It has only one argument, INPUTSTRING, which is self-described"
     (let* ((s (downcase (string-trim s)))
            (s (replace-regexp-in-string "[^[:alnum:][:space:]-]" "" s))
@@ -243,22 +251,36 @@ It has only one argument, INPUTSTRING, which is self-described"
                       :professor (plist-get props :professor)
                       :institution (plist-get props :institution)))) index)))
 
+(defun org-lectures--create-new-course-internal (course &optional title professor)
+  "Internal function to create a new course with given COURSE short title.
+Creates the course info file and updates the index. Does not prompt for input.
+Returns the path to the created course file."
+  (let* ((course-org-file (org-lectures-get-course-info-file course))
+         (id (concat course "-course"))
+         (title (or title ""))
+         (professor (or professor ""))
+         (institution org-lectures-default-institution)
+         (semester org-lectures-current-semester)
+         (spec (format-spec-make '?i id '?c course '?I institution '?s semester '?T title '?P professor))
+         (payload (format-spec org-lectures-course-file-template spec t)))
+    (write-region payload nil course-org-file)
+    (let ((new-course-entry
+           `(,course . (:title ,title
+                        :professor ,professor
+                        :institution ,org-lectures-default-institution
+                        :file ,course-org-file
+                        :lectures '()))))
+      (org-lectures--configure-index-module) ; Ensure index module vars are set
+      (org-lectures-index-get)              ; Load existing index, or rebuild if stale
+      (push new-course-entry org-lectures-index--cache) ; Add new course to cache
+      (org-lectures-index-write)            ; Write updated cache to file
+      (run-hook-with-args 'org-lectures-after-create-course-hook course))
+    course-org-file))
+
 (defun org-lectures-create-new-course ()
-  "Create a new course.
-
-More specifically this function creates:
-1. The course info file (course_<course>.org)
-2. The course lectures directory (...)
-
-Function called through `org-lectures-find-course', when the
-creation of a new course is necessary. It prompts the user for
-input (short title for the course), up to 4 letters which serve
-as the course's ID. It checks whether a course with that ID
-already exists and if it does, it uses `org-lectures-open-course'
-instead of creating any new files. If, however the file does not
-exist, and the length of the short title is less than 4 letters a
-new org file is created, in `org-lectures-dir', and with
-the course's default properties all set up."
+  "Interactively create a new course.
+Prompts the user for a short course title (up to 4 characters).
+Creates the course info file and opens it, and updates the index."
   (interactive)
   (let* ((course (upcase (completing-read "Insert short course title:" ())))
          (course-org-file (org-lectures-get-course-info-file course)))
@@ -266,25 +288,8 @@ the course's default properties all set up."
      ((file-exists-p course-org-file)
       (org-lectures-open-course course))
      ((<= (length course) 4)
-      (let* ((id (concat course "-course"))
-             (institution org-lectures-default-institution)
-             (semester org-lectures-current-semester)
-             (spec (format-spec-make '?i id '?c course '?I institution '?s semester))
-             (payload (format-spec org-lectures-course-file-template spec t))
-	     (new-course-entry
-              `(,course . (:title ""
-				  :professor ""
-				  :institution ,institution
-				  :file ,course-org-file
-				  :lectures '())))
-	     )
-        (write-region payload nil course-org-file)
-        (org-lectures--configure-index-module)
-        (org-lectures-index-get)
-        (push new-course-entry org-lectures-index--cache)
-        (org-lectures-index-write)
-        (run-hook-with-args 'org-lectures-after-create-course-hook course))
-      (org-open-file course-org-file))
+      (let ((created-file (org-lectures--create-new-course-internal course)))
+        (org-open-file created-file)))
      (t
       (error "Invalid Course Name. Short title must be less than 5 characters long")))))
 
@@ -374,63 +379,83 @@ creating a new one. Gives the option to:
           (cdr (assoc selected-prompt lecture-prompt-list)))))))
 
 (defun org-lectures-get-lecture-file-list (course)
-  "Return a list of lecture files in COURSE.
-
-If the subdirectory does not exist, it creates it."
+  "Return a list of lecture files in COURSE."
   (let* ((course-dir (org-lectures-get-course-lectures-dir course)))
-    (unless (file-directory-p course-dir)
-      (make-directory course-dir))
-    (directory-files
-     course-dir					;inside the course directory
-     'full					; recursive
+    (directory-files course-dir 'full
      (concat (regexp-opt (mapcar #'cdr org-lectures-note-type-alist)) "_" (upcase course) "_.*\.org"))))	;lecture filenames template
 
-(defun org-lectures-generate-lecture-id (COURSE)
-  "Generate a unique id for a new lecture. More parameters might be added in the future"
-    (concat "lec-" COURSE "-" (format-time-string "%Y%m%d%H%M%S")))
+(defun org-lectures-generate-lecture-id (course &optional time)
+  "Generate a unique id for a new lecture.
+COURSE is the course identifier. TIME is an optional time value
+to use for the timestamp, defaulting to the current time."
+  (concat "lec-" course "-" (format-time-string "%Y%m%d%H%M%S" (or time (current-time)))))
 
-(defun org-lectures-create-new-lecture (&optional COURSE INSTITUTION PROFESSOR)
-  "Create a new file for COURSE of INSTITUTION.
-
-Populate it according to `org-lectures-file-template'.
-
-Optional arguments exist:
-
-COURSE: to be added in the lecture's '#+COURSE' field,
-automatically populated when called through
-`org-lectures-open-course'
-
-INSTITUTION: to be added in the lecture's '#+INSTITUTION' field,
-automatically populated by 'A.U.Th' if left empty."
-  ;; Coding convention:
-  ;; - UPPERCASE variables are for "course-wide" attributes
-  ;; - lowercase variables are reserved for "lecture-specific" ones
-  (let* ((COURSE (or COURSE ""))
-	 (course-data (cdr (assoc COURSE (org-lectures-index-get))))
-	 (INSTITUTION (or INSTITUTION (or (plist-get course-data :institution) org-lectures-default-institution)))
-	 (PROFESSOR (or PROFESSOR (or (plist-get course-data :professor) "")))
-	 (lecture-filename (expand-file-name
-			    (org-lectures-set-lectures-filename COURSE)
-			    (org-lectures-get-course-lectures-dir COURSE))))
-    (let* ((id   (org-lectures-generate-lecture-id COURSE))
-	   (date (format-time-string "<%Y-%m-%d>"))
-	   (tags (string-join (seq-map (lambda (x) (cond ((stringp x) x) ((consp x) (car x)) (t nil))) org-lectures-default-tag-alist) " "))
-	   (spec (format-spec-make ?i id ?d date ?c COURSE ?I INSTITUTION ?P PROFESSOR ?t tags))
-	   (payload (format-spec org-lectures-file-template spec t)))
+(defun org-lectures--create-new-lecture-internal (course lecture-title lecture-professor lecture-institution note-type date-str &optional suffix)
+  "Internal function to create a new lecture.
+COURSE: The course short title.
+LECTURE-TITLE: The title of the lecture.
+LECTURE-PROFESSOR: The professor's name.
+LECTURE-INSTITUTION: The institution name.
+NOTE-TYPE: The short note type (e.g., 'lec').
+DATE-STR: The date string (e.g., '20251216').
+SUFFIX: Optional suffix for filename collision resolution.
+Returns the path to the created lecture file."
+  (let* ((lecture-filename (expand-file-name
+                            (org-lectures--set-lectures-filename-internal course note-type date-str suffix)
+                            (org-lectures-get-course-lectures-dir course))))
+    (let* ((id   (org-lectures-generate-lecture-id course))
+           (date (format "<%s-%s-%s>" (substring date-str 0 4) (substring date-str 4 6) (substring date-str 6 8)))
+           (tags (string-join (seq-map (lambda (x) (cond ((stringp x) x) ((consp x) (car x)) (t nil))) org-lectures-default-tag-alist) " "))
+           (spec (format-spec-make '?i id ?d date ?c course ?I lecture-institution ?P lecture-professor ?t tags ?T lecture-title))
+           (payload (format-spec org-lectures-file-template spec t)))
       (write-region payload nil lecture-filename)
-      (let* ((new-lecture-entry `(,date . (:title "Διάλεξη:"
-						  :file ,lecture-filename))))
+      (let* ((new-lecture-entry `(,date . (:title ,lecture-title
+                                                  :file ,lecture-filename))))
         (org-lectures--configure-index-module)
         (org-lectures-index-get)
-        (let ((course-in-cache (assoc COURSE org-lectures-index--cache)))
+        (let ((course-in-cache (assoc course org-lectures-index--cache)))
           (when course-in-cache
             (setf (plist-get (cdr course-in-cache) :lectures)
                   (cons new-lecture-entry (plist-get (cdr course-in-cache) :lectures)))))
         (org-lectures-index-write)
 
-	(run-hook-with-args 'org-lectures-after-create-lecture-hook lecture-filename)
+        (run-hook-with-args 'org-lectures-after-create-lecture-hook lecture-filename)
+        lecture-filename))))
 
-	(org-open-file lecture-filename)))))
+(defun org-lectures-create-new-lecture (&optional course)
+  "Interactively create a new lecture for COURSE.
+Prompts for lecture title, note type, and handles filename collisions.
+If COURSE is not provided, it will try to get it from the current buffer's context."
+  (interactive "sCourse (current or default): ")
+  (let* ((current-course (or course (org-lectures-index-get-keyword-value "COURSE")))
+         (actual-course (if (string-blank-p current-course)
+                             (completing-read "Create lecture for course: " (mapcar #'car org-lectures-index--cache))
+                           current-course))
+         (course-data (cdr (assoc actual-course (org-lectures-index-get))))
+         (lecture-institution (or (plist-get course-data :institution) org-lectures-default-institution))
+         (lecture-professor (or (plist-get course-data :professor) ""))
+         (lecture-title (read-string "Lecture title: "))
+         (note-type-key (completing-read "Note type: " (mapcar #'car org-lectures-note-type-alist)))
+         (note-type (org-lectures--get-note-type-internal note-type-key))
+         (date-str (format-time-string "%Y%m%d" (current-time)))
+         (base-filename (org-lectures--set-lectures-filename-internal actual-course note-type date-str))
+         (course-lectures-dir (org-lectures-get-course-lectures-dir actual-course))
+         (full-path (expand-file-name base-filename course-lectures-dir))
+         suffix)
+
+    ;; Handle filename collision
+    (when (file-exists-p full-path)
+      (setq suffix (org-lectures--get-collision-suffix-internal (read-string "Filename suffix (empty for time): "))))
+
+    (let ((created-file (org-lectures--create-new-lecture-internal
+                         actual-course
+                         lecture-title
+                         lecture-professor
+                         lecture-institution
+                         note-type
+                         date-str
+                         suffix)))
+      (org-open-file created-file))))
 
 (defun org-lectures-get-course-info-file (course)
   "Return the filename of that course's info file"
@@ -440,40 +465,67 @@ automatically populated by 'A.U.Th' if left empty."
       lower-file
     proper-file)))
 
+(defun org-lectures--get-note-type-internal (note-type-key)
+  "Return the regex for NOTE-TYPE-KEY from `org-lectures-note-type-alist'."
+  (cdr (assoc note-type-key org-lectures-note-type-alist)))
+
 (defun org-lectures--get-note-type ()
   "Interactively select a note type from `org-lectures-note-type-alist'."
+  (interactive)
   (let ((types org-lectures-note-type-alist))
     (if (= (length types) 1)
         (cdar types)
-      (let* ((prompt "Select a title: ")
+      (let* ((prompt "Select a note type: ")
              (options (mapcar #'car types))
              (choice (completing-read prompt options)))
-        (cdr (assoc choice types))))))
+        (org-lectures--get-note-type-internal choice)))))
+
+(defun org-lectures--get-collision-suffix-internal (user-input)
+  "Return a formatted suffix string from USER-INPUT.
+If USER-INPUT is blank, return current time, otherwise sluggify it."
+  (if (string-blank-p user-input)
+      (format-time-string "%H%M%S" (current-time))
+    (org-lectures-sluggify user-input)))
 
 (defun org-lectures--get-collision-suffix ()
   "Prompt user for info if lecture file exists, returning a filename suffix."
+  (interactive)
   (let ((prompt "A lecture with this filename already exists. Enter complementary information (empty appends hour-minute-second): "))
     (let ((user-input (read-string prompt)))
-      (if (string-blank-p user-input)
-          (format-time-string "%H%M%S" (current-time))
-        (org-lectures-sluggify user-input)))))
+      (org-lectures--get-collision-suffix-internal user-input))))
 
 (defun org-lectures-get-course-lectures-dir (course)
-  "Return the directory in which lectures for `course' reside"
-  (expand-file-name (concat "course_" course) org-lectures-dir))
+  "Return the directory in which lectures for `course' reside.
+Creates the directory if it doesn't exist."
+  (let ((course-dir (expand-file-name (concat "course_" course) org-lectures-dir)))
+    (unless (file-directory-p course-dir)
+      (make-directory course-dir t))
+    course-dir))
+
+(defun org-lectures--set-lectures-filename-internal (course note-type date-str &optional suffix)
+  "Generate a lecture filename for COURSE.
+NOTE-TYPE is the short type (e.g., 'lec').
+DATE-STR is the date in YYYYMMDD format.
+SUFFIX is an optional string to append for collision resolution."
+  (if suffix
+      (format "%s_%s_%s_%s.org" note-type course date-str suffix)
+    (format "%s_%s_%s.org" note-type course date-str)))
 
 (defun org-lectures-set-lectures-filename (course)
-  "Return a unique lecture filename using the format:
-`notetype_COURSE_DATE[_SUFFIX].org'."
+  "Return a unique lecture filename for COURSE.
+Prompts for note type and collision suffix if necessary."
+  (interactive "sCourse: ")
   (let* ((note-type (org-lectures--get-note-type))
          (date-str (format-time-string "%Y%m%d" (current-time)))
-         (base-filename (format "%s_%s_%s.org" note-type course date-str))
+         (base-filename (org-lectures--set-lectures-filename-internal course note-type date-str))
          (course-dir (org-lectures-get-course-lectures-dir course))
-	 ;; Check for duplicate file
-         (suffix (when (file-exists-p (expand-file-name base-filename course-dir))
-                   (org-lectures--get-collision-suffix))))
-    (if suffix
-	(format "%s_%s_%s_%s.org" note-type course date-str suffix) base-filename)))
+         (full-path (expand-file-name base-filename course-dir)))
+    (if (file-exists-p full-path)
+        ;; Collision detected, get suffix interactively
+        (let* ((suffix (org-lectures--get-collision-suffix)))
+          (org-lectures--set-lectures-filename-internal course note-type date-str suffix))
+      ;; No collision
+      base-filename)))
 
 (require 'ox-latex) ; Ensure the latex exporter is available
 
