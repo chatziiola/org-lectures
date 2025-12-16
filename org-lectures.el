@@ -138,12 +138,35 @@ Use `format-spec` codes:
   %P  -> professor
   %t  -> filetags")
 
+(defvar org-lectures-course-file-template
+  ":PROPERTIES:
+:ID: %i
+:END:
+#+TITLE:
+#+PROFESSOR:
+#+INSTITUTION: %I
+#+SEMESTER: %s
+#+FILETAGS: course
+#+COURSE: %c
+"
+  "Template for new course files.
+
+Use `format-spec` codes:
+  %i  -> ID (e.g., \"<course>-course\")
+  %c  -> course
+  %I  -> institution
+  %s  -> semester")
+
 (defvar org-lectures-default-tag-alist '("lecture" "todo")
   "This variable is used when setting the FILETAGS parameter in new lecture files")
 
 (defvar org-lectures-after-create-course-hook nil
   "Hook run after creating a new course.
 The course ID is passed as an argument.")
+
+(defvar org-lectures-after-open-course-hook nil
+  "Hook run after opening an existing course file.
+The filename of the course is passed as an argument.")
 
 (defvar org-lectures-after-create-lecture-hook nil
   "Hook run after creating a new lecture.
@@ -236,29 +259,34 @@ instead of creating any new files. If, however the file does not
 exist, and the length of the short title is less than 4 letters a
 new org file is created, in `org-lectures-dir', and with
 the course's default properties all set up."
-        (interactive)
-        (let* ((course (downcase (completing-read "Insert short course title:" ())))
-               (course-org-file (org-lectures-get-course-info-file course)))
-          (cond
-           ((file-exists-p course-org-file)
-                (org-lectures-open-course (upcase course)))
-           ((<= (length course) 4)
-                (org-open-file course-org-file)
-                (insert ":PROPERTIES:\n:ID: " course "-course\n:END:\n#+TITLE:\n#+PROFESSOR:\n#+INSTITUTION: " org-lectures-default-institution "\n#+SEMESTER: " org-lectures-current-semester "\n#+FILETAGS: course\n#+COURSE: " (upcase course)  "\n")
-                (save-buffer)
-                (let ((new-course-entry
-                       `(,(upcase course) . (:title ""
-                                            :professor ""
-                                            :institution ,org-lectures-default-institution
-                                            :file ,course-org-file
-                                            :lectures '()))))
-                  (org-lectures--configure-index-module)
-                  (org-lectures-index-get)
-                  (push new-course-entry org-lectures-index--cache)
-                  (org-lectures-index-write)
-                  (run-hook-with-args 'org-lectures-after-create-course-hook (upcase course))))
-           (t
-            (error "Invalid Course Name. Short title must be less than 5 characters long")))))
+  (interactive)
+  (let* ((course (upcase (completing-read "Insert short course title:" ())))
+         (course-org-file (org-lectures-get-course-info-file course)))
+    (cond
+     ((file-exists-p course-org-file)
+      (org-lectures-open-course course))
+     ((<= (length course) 4)
+      (let* ((id (concat course "-course"))
+             (institution org-lectures-default-institution)
+             (semester org-lectures-current-semester)
+             (spec (format-spec-make '?i id '?c course '?I institution '?s semester))
+             (payload (format-spec org-lectures-course-file-template spec t))
+	     (new-course-entry
+              `(,course . (:title ""
+				  :professor ""
+				  :institution ,instiution
+				  :file ,course-org-file
+				  :lectures '())))
+	     )
+        (write-region payload nil course-org-file)
+        (org-lectures--configure-index-module)
+        (org-lectures-index-get)
+        (push new-course-entry org-lectures-index--cache)
+        (org-lectures-index-write)
+        (run-hook-with-args 'org-lectures-after-create-course-hook course))
+      (org-open-file course-org-file))
+     (t
+      (error "Invalid Course Name. Short title must be less than 5 characters long")))))
 
 (defun org-lectures-open-course-folder (&optional course)
   "Open the selected course's folder (with system default).
@@ -301,7 +329,9 @@ creating a new one. Gives the option to:
 	 ((string-equal lecture-answer "OF")
 	  (org-lectures-dired-course-folder course))
 	 ((string-equal lecture-answer "INFO")
-	  (org-open-file (org-lectures-get-course-info-file course))))
+	  (let ((course-file (org-lectures-get-course-info-file course)))
+	    (org-open-file course-file)
+	    (run-hook-with-args 'org-lectures-after-open-course-hook course-file))))
       (let ((lecture-file (car (last lecture-answer))))
         (org-open-file lecture-file)
         (run-hook-with-args 'org-lectures-after-open-lecture-hook lecture-file)))))
@@ -535,6 +565,20 @@ automatically populated by 'A.U.Th' if left empty."
   (if org-lectures-minor-mode
       (org-lectures-setup)
     (org-lectures-teardown)))
+
+(defun org-lectures--auto-rebuild-index-on-save ()
+  "Rebuild the org-lectures index for the current buffer."
+  (message "Org-Lectures: Course file saved, rebuilding index...")
+  (org-lectures--configure-index-module)
+  (org-lectures-index-rebuild))
+
+(defun org-lectures--add-course-save-hook (filename)
+  "Add a buffer-local after-save-hook to rebuild the index.
+Argument FILENAME is ignored."
+  (ignore filename)
+  (add-hook 'after-save-hook #'org-lectures--auto-rebuild-index-on-save nil t))
+
+(add-hook 'org-lectures-after-open-course-hook #'org-lectures--add-course-save-hook)
 
 (provide 'org-lectures)
 ;;; org-lectures.el ends here

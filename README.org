@@ -270,6 +270,25 @@ Use `format-spec` codes:
   %I  -> institution
   %P  -> professor
   %t  -> filetags")
+
+(defvar org-lectures-course-file-template
+  ":PROPERTIES:
+:ID: %i
+:END:
+#+TITLE:
+#+PROFESSOR:
+#+INSTITUTION: %I
+#+SEMESTER: %s
+#+FILETAGS: course
+#+COURSE: %c
+"
+  "Template for new course files.
+
+Use `format-spec` codes:
+  %i  -> ID (e.g., \"<course>-course\")
+  %c  -> course
+  %I  -> institution
+  %s  -> semester")
 #+end_src
 
 <2025-10-25 Sat>: New parameter: Lecture default tags
@@ -395,7 +414,6 @@ Get list of courses
 ** Creating a New Course
 Create new course:
 #+begin_src elisp
-
 (defun org-lectures-create-new-course ()
   "Create a new course.
 
@@ -412,29 +430,34 @@ instead of creating any new files. If, however the file does not
 exist, and the length of the short title is less than 4 letters a
 new org file is created, in `org-lectures-dir', and with
 the course's default properties all set up."
-        (interactive)
-        (let* ((course (downcase (completing-read "Insert short course title:" ())))
-               (course-org-file (org-lectures-get-course-info-file course)))
-          (cond
-           ((file-exists-p course-org-file)
-                (org-lectures-open-course (upcase course)))
-           ((<= (length course) 4)
-                (org-open-file course-org-file)
-                (insert ":PROPERTIES:\n:ID: " course "-course\n:END:\n#+TITLE:\n#+PROFESSOR:\n#+INSTITUTION: " org-lectures-default-institution "\n#+SEMESTER: " org-lectures-current-semester "\n#+FILETAGS: course\n#+COURSE: " (upcase course)  "\n")
-                (save-buffer)
-                (let ((new-course-entry
-                       `(,(upcase course) . (:title ""
-                                            :professor ""
-                                            :institution ,org-lectures-default-institution
-                                            :file ,course-org-file
-                                            :lectures '()))))
-                  (org-lectures--configure-index-module)
-                  (org-lectures-index-get)
-                  (push new-course-entry org-lectures-index--cache)
-                  (org-lectures-index-write)
-                  (run-hook-with-args 'org-lectures-after-create-course-hook (upcase course))))
-           (t
-            (error "Invalid Course Name. Short title must be less than 5 characters long")))))
+  (interactive)
+  (let* ((course (upcase (completing-read "Insert short course title:" ())))
+         (course-org-file (org-lectures-get-course-info-file course)))
+    (cond
+     ((file-exists-p course-org-file)
+      (org-lectures-open-course course))
+     ((<= (length course) 4)
+      (let* ((id (concat course "-course"))
+             (institution org-lectures-default-institution)
+             (semester org-lectures-current-semester)
+             (spec (format-spec-make '?i id '?c course '?I institution '?s semester))
+             (payload (format-spec org-lectures-course-file-template spec t))
+	     (new-course-entry
+              `(,course . (:title ""
+				  :professor ""
+				  :institution ,instiution
+				  :file ,course-org-file
+				  :lectures '())))
+	     )
+        (write-region payload nil course-org-file)
+        (org-lectures--configure-index-module)
+        (org-lectures-index-get)
+        (push new-course-entry org-lectures-index--cache)
+        (org-lectures-index-write)
+        (run-hook-with-args 'org-lectures-after-create-course-hook course))
+      (org-open-file course-org-file))
+     (t
+      (error "Invalid Course Name. Short title must be less than 5 characters long")))))
 
 #+end_src
 
