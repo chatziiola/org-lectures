@@ -274,7 +274,7 @@ the course's default properties all set up."
 	     (new-course-entry
               `(,course . (:title ""
 				  :professor ""
-				  :institution ,instiution
+				  :institution ,institution
 				  :file ,course-org-file
 				  :lectures '())))
 	     )
