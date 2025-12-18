@@ -39,7 +39,7 @@ If KEY is a list, return a list of corresponding values."
         (mapcar (lambda (k) (cadr (assoc k keyword-map))) key)
       (cadr (assoc key keyword-map)))))
 
-(defun org-lectures-index-get-keyword-value (key &optional file)
+(defun org-lectures-index--get-keyword-value (key &optional file)
   "Return the value for KEY in an Org buffer.
 If FILE is given, find that file and check there. Otherwise, use
 the current buffer.
@@ -58,7 +58,7 @@ If KEY is a list, return a list of corresponding values."
 ; (org-files-in-dir org-lectures-dir)
 ; (org-files-in-dir org-lectures-dir "^course_emf1" t)
 
-(defun org-index-parse-org-file (file fields)
+(defun org-lectures-index--parse-org-file (file fields)
   "Parse FILE and extract FIELDS.
 FIELDS must be a plist mapping output keys to Org buffer keywords.
 e.g. (:title \"TITLE\" :author \"AUTHOR\").
@@ -77,16 +77,16 @@ Automatically adds :file and :mtime to the result."
                     (keyword (pop field-map)))  ; e.g. "TITLE"
                 (setq result (plist-put result key (org-lectures-index--get-keyword-value-from-buffer keyword))))))
           result))
-    (error "Debug: the org file you tried to parse does not exist %s" file)
+    (error "Error: The Org file you tried to parse does not exist: %s" file)
     ))
 
-; (org-index-parse-org-file "~/Github/milectures/course_emf1.org" '(:title "TITLE" :professor "PROFESSOR"))
+; (org-lectures-index--parse-org-file "~/Github/milectures/course_emf1.org" '(:title "TITLE" :professor "PROFESSOR"))
 
-(defun org-index-parse-course-file (course-id &optional lecturesalist)
-  "Read COURSE_ID course file and create a proper entry for the cache."
+(defun org-lectures-index--parse-course-file (course-id &optional lecturesalist)
+  "Read the COURSE_ID course file and create a proper entry for the cache."
   ;; (let ((course-id "1802") (lecturesalist '()))
-  (let* ((course-file (org-index-get-course-file course-id))
-         (data (org-index-parse-org-file
+  (let* ((course-file (org-lectures-index-get-course-file course-id))
+         (data (org-lectures-index--parse-org-file
                 course-file
                 '(:course-id   "COURSE"
                   :title       "TITLE"
@@ -99,9 +99,9 @@ Automatically adds :file and :mtime to the result."
       (setq data (plist-put data :lectures lecs))
       (cons (upcase (plist-get data :course-id)) data))))
 
-(defun org-index-parse-lecture-file (file)
-  "Read COURSE_ID course file and create a proper entry for the cache."
-  (let* ((data (org-index-parse-org-file
+(defun org-lectures-index--parse-lecture-file (file)
+  "Read the COURSE_ID course file and create a proper entry for the cache."
+  (let* ((data (org-lectures-index--parse-org-file
                 file
                 '(:title       "TITLE"
 		  :date        "DATE"
@@ -115,13 +115,13 @@ Automatically adds :file and :mtime to the result."
   "Update the entry for COURSE in `org-lectures-index--cache'"
   (when org-lectures-index--dirty-p
     (setq org-lectures-index--cache new-val)
-    (org-lectures-index-save))
+    (org-lectures-index--save))
   new-val)
 
-(defun org-index-get-course-list ()
+(defun org-lectures-index-get-course-list ()
   "Compute the list of valid courses."
   (let* ((course-files (org-files-in-dir org-lectures-index-dir "^course_"))
-	 (current-index (org-lectures-index-get))
+	 (current-index (org-lectures-index--get))
 	 (valid-courses '()))
     (dolist (file course-files)
       (let* ((filename (file-name-nondirectory file))
@@ -133,22 +133,22 @@ Automatically adds :file and :mtime to the result."
 		   (if (time-less-p index-mtime file-mtime)
 		       (progn
 			 (setq org-lectures-index--dirty-p t)
-			 (push (org-index-parse-course-file course-id (plist-get (cdr cached-entry) :lectures)) valid-courses))
+			 (push (org-lectures-index--parse-course-file course-id (plist-get (cdr cached-entry) :lectures)) valid-courses))
 		     (push cached-entry valid-courses)))
 	       (progn
 		 (setq org-lectures-index--dirty-p t)
-		 (push (org-index-parse-course-file course-id) valid-courses)))))
+		 (push (org-lectures-index--parse-course-file course-id) valid-courses)))))
       (org-lectures-index--update (nreverse valid-courses))))
 
-(defun org-index-get-course-file (course)
-  "Return the filename of that course's info file"
+(defun org-lectures-index-get-course-file (course)
+  "Return the filename of the course's info file."
   (let* ((lower-file (expand-file-name (concat "course_" (downcase course) ".org") org-lectures-dir ))
 	 (proper-file (expand-file-name (concat "course_" course ".org") org-lectures-dir )))
   (if (file-exists-p lower-file) ; remnants of a shady past
       lower-file
     proper-file)))
 
-(defun org-index-get-course-dir (course)
+(defun org-lectures-index-get-course-dir (course)
   "Return the directory in which lectures for `course' reside.
 Creates the directory if it doesn't exist."
   (let ((course-dir (expand-file-name (concat "course_" (upcase course)) org-lectures-dir)))
@@ -157,10 +157,10 @@ Creates the directory if it doesn't exist."
     course-dir))
 
 (defun org-lectures-index--get-course-lectures-list (course)
-  "Compute the list of valid lectures for a given course without side-effects."
-  (let* ((lecture-files (org-files-in-dir (org-index-get-course-dir course)))
-	 (course-cache (or (assoc course (org-lectures-index-get))
-			   (assoc (upcase course) (org-lectures-index-get))))
+  "Compute the list of valid lectures for a given course without side effects."
+  (let* ((lecture-files (org-files-in-dir (org-lectures-index-get-course-dir course)))
+	 (course-cache (or (assoc course (org-lectures-index--get))
+			   (assoc (upcase course) (org-lectures-index--get))))
 	 (cached-lectures (plist-get (cdr course-cache) :lectures))
          (valid-lectures '()))
     (dolist (file lecture-files)
@@ -172,37 +172,37 @@ Creates the directory if it doesn't exist."
               (if (time-less-p index-mtime file-mtime)
                   (progn
                     (setq org-lectures-index--dirty-p t)
-                    (push (org-index-parse-lecture-file file) valid-lectures))
+                    (push (org-lectures-index--parse-lecture-file file) valid-lectures))
                 (push cached-lec valid-lectures)))
           (progn
             (setq org-lectures-index--dirty-p t)
-            (push (org-index-parse-lecture-file file) valid-lectures)))))
+            (push (org-lectures-index--parse-lecture-file file) valid-lectures)))))
     (nreverse valid-lectures)))
 
 (defun org-lectures-index--update-course-lectures-list (course)
   "Update the lectures for a specific course in the cache."
   (let* ((lectures (org-lectures-index--get-course-lectures-list course))
          (course-id (upcase course))
-         (old-course-entry (assoc course-id (org-lectures-index-get))))
+         (old-course-entry (assoc course-id (org-lectures-index--get))))
     (when old-course-entry
       (let* ((old-course-data (cdr old-course-entry))
              (new-course-data (plist-put old-course-data :lectures lectures))
              (new-course-entry (cons course-id new-course-data)))
         (setq org-lectures-index--cache
               (cons new-course-entry (cl-remove-if (lambda (entry) (equal (car entry) course-id))
-                                                (org-lectures-index-get)))))
-      (org-lectures-index-save))))
+                                                (org-lectures-index--get)))))
+      (org-lectures-index--save))))
 
-(defun org-index-get-course-lectures-list (course)
+(defun org-lectures-index-get-course-lectures-list (course)
   "Get all valid lectures for COURSE, in the standard cache format.
 This function ensures the cache is up-to-date."
   (org-lectures-index--update-course-lectures-list course)
   (let* ((course-id (upcase course))
-         (course-entry (assoc course-id (org-lectures-index-get))))
+         (course-entry (assoc course-id (org-lectures-index--get))))
     (plist-get (cdr course-entry) :lectures)))
 
 
-;; ; (org-index-get-course-lectures-list "emf1")
+;; ; (org-lectures-index--get-course-lectures-list "emf1")
 
 (defun org-lectures-index-rebuild ()
   "Scan all course and lecture files and rebuild the index.
@@ -217,14 +217,14 @@ This function reads files into temporary buffers and does not leave them open."
 	     (course-id (upcase (replace-regexp-in-string
                                  "course_" ""
                                  (file-name-sans-extension file-name))))
-	     (course-data (org-index-parse-course-file course-id
-						       (org-index-get-course-lectures-list course-id))))
+	     (course-data (org-lectures-index--parse-course-file course-id
+						       (org-lectures-index-get-course-lectures-list course-id))))
 	(push course-data index-data )))
     (setq org-lectures-index--cache (nreverse index-data))
-    (org-lectures-index-write)
+    (org-lectures-index--write)
     (message "org-lectures-index rebuilt.")))
 
-(defun org-lectures-load-index-from-file ()
+(defun org-lectures-index--load-from-file ()
   "Return the index or nil"
   (let ((index-file (expand-file-name ".org-lectures-index.el" org-lectures-index-dir)))
     (when (if (file-exists-p index-file)
@@ -233,26 +233,26 @@ This function reads files into temporary buffers and does not leave them open."
 		      (insert-file-contents index-file)
 		      (read (current-buffer))))))))
 
-(defun org-lectures-index-get ()
+(defun org-lectures-index--get ()
   "Load and return the course index.
 If the index file does not exist or is stale, it is rebuilt."
   ;; Load cache first to perform checks
   (if (not org-lectures-index--cache)
-      (setq org-lectures-index--cache (org-lectures-load-index-from-file))
+      (setq org-lectures-index--cache (org-lectures-index--load-from-file))
     org-lectures-index--cache))
 
-(defun org-lectures-index-save ()
+(defun org-lectures-index--save ()
   "Save the cache to disk if it is dirty."
   (when org-lectures-index--dirty-p
-    (org-lectures-index-write)
+    (org-lectures-index--write)
     (setq org-lectures-index--dirty-p nil)))
 
-(defun org-lectures-index-write ()
+(defun org-lectures-index--write ()
   "Write the current in-memory course cache to the index file."
   (let ((index-file (expand-file-name ".org-lectures-index.el" org-lectures-index-dir)))
     (with-temp-buffer
       (require 'pp)
-      (pp (org-lectures-index-get) (current-buffer))
+      (pp (org-lectures-index--get) (current-buffer))
       (write-file index-file))))
 
 (provide 'org-lectures-index)

@@ -1,3 +1,9 @@
+#+TITLE:  Org-Lectures
+#+PROPERTY: header-args :tangle (let ((org-use-tag-inheritance t)) (if (member "INACTIVE" (org-get-tags))  "no" "org-lectures.el"))
+#+auto_tangle: t
+
+Header
+#+begin_src elisp
 ;;; org-lectures.el --- Chasing simplicity -*- lexical-binding: t -*-
 
 ;; This file has been generated from the literate.org file. DO NOT EDIT.
@@ -20,6 +26,10 @@
 
 ;; This file is NOT part of GNU Emacs.
 
+#+end_src
+
+License
+#+begin_src elisp
 ;; LICENSE
 
 ;; This file is free software; you can redistribute it and/or modify
@@ -35,17 +45,31 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#+end_src
+
+#+begin_src elisp
 ;;; Commentary:
 
 ;; For a deep dive into the ideology of the package, look up the README.org file
 ;; that you should have received along with it.
 
+#+end_src
+
+* Imports
+Let's dive into the code
+#+begin_src elisp
 ;;; Code:
 
 (require 'org)
 (require 'org-lectures-index) ;; Makes this fast enough
 (require 'org-lectures-latex) ;; Provides latexmk integration
 
+#+end_src
+
+* Available variables
+For those wishing to customize their installation:
+
+#+begin_src elisp
 (defvar org-lectures-dir (expand-file-name "~/org/lectures")
  "Lecture and course files directory.
 
@@ -90,6 +114,13 @@ org-roam.
 
 FIXME. This option is not currently implemented.")
 
+
+
+#+end_src
+
+
+<2023-04-17 Mon>: New parameter: Note type:
+#+begin_src elisp
 (defvar org-lectures-note-type-alist '(("lecture" . "lec"))
   "Contains the note type. Every pair here will be checked.
 
@@ -98,17 +129,21 @@ The format is '(key . regex).
 TODO: Implement it in note creation.
 "
   )
+#+end_src
 
+<2025-10-25 Sat>: New parameter: Lecture file template
+#+NAME: org-lecture-file-template
+#+begin_src elisp
 (defvar org-lectures-file-template
   ":PROPERTIES:
 :ID: %i
 :END:
-#+TITLE: %T
-#+FILETAGS: %t
-#+DATE: %d
-#+COURSE: %c
-#+INSTITUTION: %I
-#+PROFESSOR: %P
+,#+TITLE: %T
+,#+FILETAGS: %t
+,#+DATE: %d
+,#+COURSE: %c
+,#+INSTITUTION: %I
+,#+PROFESSOR: %P
 "
   "Template for new lecture files.
 
@@ -141,7 +176,11 @@ Use `format-spec` codes:
   %s  -> semester
   %T  -> title
   %P  -> professor")
+#+end_src
 
+<2025-10-25 Sat>: New parameter: Lecture default tags
+#+NAME: org-lectures-default-tag-alist
+#+begin_src elisp
 (defvar org-lectures-default-tag-alist '("lecture" "todo")
   "This variable is used when setting the FILETAGS parameter in new lecture files")
 
@@ -160,11 +199,24 @@ The filename of the new lecture is passed as an argument.")
 (defvar org-lectures-after-open-lecture-hook nil
   "Hook run after opening an existing lecture.
 The filename of the lecture is passed as an argument.")
+#+end_src
 
+
+** Configuring index
+
+#+begin_src elisp
 (with-eval-after-load 'org-lectures-index
   (setq org-lectures-index-dir org-lectures-dir)
   (setq org-lectures-index-note-type-alist org-lectures-note-type-alist))
-
+#+end_src
+* Functions
+** String Normalization
+Inspired by `org-roam`, this package utilizes a slug function. Rather than reimplementing similar functionality, an existing solution was adapted.
+- Source:  https://github.com/org-roam/org-roam
+- <2025-10-25 Sat>: I opted for a much simpler version:
+  - Keeps only alphanumeric characters - discards everything else.
+  - Uses '-' for spaces.
+#+begin_src elisp
 (defun org-lectures-sluggify (s)
   "Given a string, return its 'sluggified' version.
 
@@ -177,6 +229,14 @@ It has only one argument, INPUTSTRING, which is self-explanatory"
            (s (replace-regexp-in-string "[^[:alnum:][:space:]-]" "" s))
            (s (replace-regexp-in-string "[[:space:]]+" "-" s)))
       (replace-regexp-in-string "^-\\|-$" "" s)))
+#+end_src
+
+Note on performance:
+- Earlier implementations that used `(kill-buffer)` to manage open buffers led to significantly reduced performance. While the current approach might still incur some initial delay when processing a new category, it avoids the performance overhead of frequent buffer creation and destruction.
+
+** Finding a Course
+Find-course: This is the entry point
+#+begin_src elisp
 
 (defun org-lectures-find-course ()
   "Default driver function of `org-lectures.el'."
@@ -188,6 +248,13 @@ It has only one argument, INPUTSTRING, which is self-explanatory"
      (t
       (org-lectures-find-course-lectures (upcase course-answer))))))
 
+#+end_src
+
+** Selecting a Course from the List
+Select course from course prompt
+- This needs to be optimized inline.
+- Make it "internal"
+#+begin_src elisp
 (defun org-lectures-select-course-from-list ()
   "Show a prompt and return the selected course's ID."
   (let ((courses (org-lectures-index-get-course-list)))
@@ -218,7 +285,14 @@ It has only one argument, INPUTSTRING, which is self-explanatory"
                (list (cons "New Course" "NC")))))
         (let* ((selected-prompt (completing-read "Select Course: " course-prompt-alist)))
           (cdr (assoc selected-prompt course-prompt-alist)))))))
+#+end_src
 
+#+RESULTS:
+: org-lectures-select-course-from-list
+
+** Creating a New Course
+Create new course:
+#+begin_src elisp
 (defun org-lectures--create-new-course-internal (course &optional title professor institution semester)
   "Internal function to create a new course with given COURSE short title.
 Creates the course info file and updates the index. Does not prompt for input.
@@ -249,6 +323,11 @@ Creates the course info file and opens it, and updates the index."
              (org-open-file created-file)))
 	  (t
 	   (error "Invalid Course Name. Short title must be less than 5 characters long")))))
+#+end_src
+
+** Opening the Course Folder
+- Relies on internal function of ~org-lectures-index~: ~-get-keyword-value~
+#+begin_src elisp
 
 (defun org-lectures-open-course-folder (&optional course)
   "Open the selected course's folder (with system default).
@@ -272,6 +351,14 @@ when called by `org-lectures-find-course-lectures'"
     (unless (symbolp course)
       (message (concat "Course " course " folder opened")))
     (dired (concat org-lectures-static-course-files-dir "course_" course))))
+
+#+end_src
+
+- <2025-10-25 Sat> Deprecated message dired-course-folder. No reason to exist,
+  since keybindings for dired do this much more easily.
+
+** Opening a Course and Listing Lectures
+#+begin_src elisp
 
 (defun org-lectures-find-course-lectures (course)
   "Get prompt for COURSE lectures.
@@ -297,7 +384,10 @@ creating a new one. Gives the option to:
       (let ((lecture-file (plist-get (cdr lecture-answer) :file)))
         (org-open-file lecture-file)
         (run-hook-with-args 'org-lectures-after-open-lecture-hook lecture-file)))))
+#+end_src
 
+** Retrieving Lecture Selection
+#+begin_src elisp
 (defun org-lectures-select-lecture-from-course (course &optional publish)
   "Open a COURSE lecture for viewing or create a new one."
   (let* ((course-lectures (org-lectures-index-get-course-lectures-list course)))
@@ -330,13 +420,25 @@ creating a new one. Gives the option to:
                        '("Course Info" . "INFO"))))))
         (let* ((selected-prompt (completing-read "Select Lecture: " lecture-prompt-list)))
           (cdr (assoc selected-prompt lecture-prompt-list)))))))
+#+end_src
 
+#+RESULTS:
+: org-lectures-select-lecture-from-course
+
+** Creating a New Lecture
+- [ ] Opening a newly created lecture does not run the after open hook
+#+NAME: Name
+#+begin_src elisp
 (defun org-lectures-generate-lecture-id (course &optional time)
   "Generate a unique id for a new lecture.
 COURSE is the course identifier. TIME is an optional time value
 to use for the timestamp, defaulting to the current time."
   (concat "lec-" course "-" (format-time-string "%Y%m%d%H%M%S" (or time (current-time)))))
+#+end_src
 
+
+- Still using internal index function: ~--get-keyword-value~
+#+begin_src elisp
 (defun org-lectures--create-new-lecture-internal (course lecture-title lecture-professor lecture-institution note-type date-str &optional suffix)
   "Internal function to create a new lecture.
 COURSE: The course short title.
@@ -393,7 +495,10 @@ If COURSE is not provided, it will try to get it from the current buffer's conte
                          date-str
                          suffix)))
       (org-open-file created-file))))
+#+end_src
 
+** Setting the Lecture Filename
+#+begin_src elisp
 (defun org-lectures--get-note-type-internal (note-type-key)
   "Return the regex for NOTE-TYPE-KEY from `org-lectures-note-type-alist'."
   (cdr (assoc note-type-key org-lectures-note-type-alist)))
@@ -448,6 +553,10 @@ Prompts for note type and collision suffix if necessary."
           (org-lectures--set-lectures-filename-internal course note-type date-str suffix))
       ;; No collision
       base-filename)))
+#+end_src
 
+** Footer
+#+begin_src elisp
 (provide 'org-lectures)
 ;;; org-lectures.el ends here
+#+end_src

@@ -5,16 +5,10 @@
 This package integrates a minor mode that, while not exclusive to ~org-lectures~,
 significantly enhances the writing experience.
 
-To ensure proper functionality and configuration:
-- The user may now run ~org-lectures-minor-mode~
-- When the minor mode starts,
-  - the file gets exported to latex, using the default ~ox-latex~ backend
-  - a hook gets added, locally to the buffer, to keep the ~tex~ file updated: this
-    is achieved by ~org-lectures-export-to-latex~ (a simple wrapper to the
-    backend) being run on save.
-  - a ~latexmk~ process gets started, continuously publishing the ~tex~ file to
-    ~pdf~. In the first execution (after the ~pdf~ first gets created) the default
-    ~pdf viewer~ will also open.
+To ensure proper functionality and configuration, when the minor mode starts:
+- The file is exported to LaTeX using the default `ox-latex` backend.
+- A buffer-local hook is added to keep the `tex` file updated, achieved by `org-lectures-export-to-latex` (a simple wrapper to the backend) running on save.
+- A `latexmk` process starts, continuously publishing the `tex` file to `pdf`. During its first execution (after the `pdf` is first created), the default `pdf viewer` will also open.
 
 #+NAME: Important Notice
 #+begin_note
@@ -39,21 +33,14 @@ This package does not cover the configuration of ~ox-latex~. A properly configur
   (let* ((tex-file-name (concat (file-name-sans-extension file) ".tex"))
 	 (process-name (format "lecture-mk-%s" (file-name-nondirectory file)))
          (output-buffer (get-buffer-create (format "*latexmk-%s*" (file-name-nondirectory file))))
-         ;; The command components
          (program "latexmk")
          (args (list "-pvc" "-interaction=nonstopmode" "-xelatex" "-shell-escape" tex-file-name)))
-
     (message "Starting %s with PID %s" program process-name)
-
-    ;; Kill any existing process with the same name first
     (let ((existing-proc (get-process process-name)))
       (when existing-proc (kill-process existing-proc)))
-
-    ;; Start the new process asynchronously
     (org-lectures-latex-export-to-latex file)
     (apply 'start-process process-name output-buffer program args)
     ))
-
 
 (defun org-lectures-latex-kill-latexmk (file)
   "Kills the continuous latexmk process associated with the given file."
@@ -81,6 +68,7 @@ This package does not cover the configuration of ~ox-latex~. A properly configur
 
       ;; 2. Add the buffer-local write hook
       (add-hook 'after-save-hook 'org-lectures-latex-export-to-latex nil t)
+      (add-hook 'buffer-kill-hook (lambda () (org-lectures-latex-kill-latexmk (buffer-file-name))) nil t)
       (message "Org Lecture Mode Activated! Buffer-local write hook added.")))))
 
 (defun org-lectures-latex-teardown ()

@@ -9,21 +9,14 @@
   (let* ((tex-file-name (concat (file-name-sans-extension file) ".tex"))
 	 (process-name (format "lecture-mk-%s" (file-name-nondirectory file)))
          (output-buffer (get-buffer-create (format "*latexmk-%s*" (file-name-nondirectory file))))
-         ;; The command components
          (program "latexmk")
          (args (list "-pvc" "-interaction=nonstopmode" "-xelatex" "-shell-escape" tex-file-name)))
-
     (message "Starting %s with PID %s" program process-name)
-
-    ;; Kill any existing process with the same name first
     (let ((existing-proc (get-process process-name)))
       (when existing-proc (kill-process existing-proc)))
-
-    ;; Start the new process asynchronously
     (org-lectures-latex-export-to-latex file)
     (apply 'start-process process-name output-buffer program args)
     ))
-
 
 (defun org-lectures-latex-kill-latexmk (file)
   "Kills the continuous latexmk process associated with the given file."
@@ -51,6 +44,7 @@
 
       ;; 2. Add the buffer-local write hook
       (add-hook 'after-save-hook 'org-lectures-latex-export-to-latex nil t)
+      (add-hook 'buffer-kill-hook (lambda () (org-lectures-latex-kill-latexmk (buffer-file-name))) nil t)
       (message "Org Lecture Mode Activated! Buffer-local write hook added.")))))
 
 (defun org-lectures-latex-teardown ()
